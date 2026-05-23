@@ -15,9 +15,9 @@
 
 ```
 오류 발생 → 자동 캡처 → DB 저장 → 규칙 매칭 → 알림 발송
-                                              ├── 메일 (그누보드 mailer 자동 SMTP)
-                                              ├── SMS (알리고 솔루션)
-                                              └── 카카오 알림톡 (알리고 솔루션)
+                                        ├── 메일 (그누보드 mailer 자동 SMTP)
+                                        ├── SMS (알리고 솔루션)
+                                        └── 카카오 알림톡 (알리고 솔루션)
 ```
 
 ## 2. 주요 기능
@@ -91,59 +91,62 @@ SMS는 건당 비용이 발생하므로 **법적 안전장치 수준**으로 보
 ## 3. 파일 구성
 
 ```
-extend/
-└── gb_guardian.extend.php                  그누보드 진입점 (cf_guardian_use=0 일 때 즉시 return)
-
-plugin/gb_guardian/
-├── install.php                              설치 / 업그레이드 / 자동 마이그레이션
-├── cleanup.php                              v1.0→v1.1 업그레이드 후 g5_config 컬럼 정리 (1회성)
-├── README.md                                본 문서
-├── MANUAL.html                              사용자 매뉴얼 (HTML)
-├── lib/
-│   ├── guardian.lib.php                    공용 함수 (메뉴 / 컨텍스트 / 등급 매핑)
-│   ├── guardian_admin.lib.php              관리 화면 헬퍼 (시간 포맷 / 배지 / 카운트)
-│   ├── guardian_brand.lib.php              브랜드 / 푸터 / 미해결 알림 박스
-│   ├── guardian_chart.lib.php              대시보드 차트 데이터
-│   ├── guardian_config.lib.php             별도 설정 테이블 + 호환 레이어 + 마이그레이션
-│   ├── guardian_db.lib.php                 마스킹 / DB I/O / 디바운싱
-│   ├── error_handler.lib.php               4가지 핸들러 + 통합 캡처
-│   ├── guardian_protector.lib.php          ★ 보호 시스템 (비상정지/한도/쿨다운/락/야간무음)
-│   ├── guardian_template.lib.php           메일/SMS/카톡 템플릿 렌더링
-│   ├── guardian_mailer.lib.php             메일 어댑터 (그누보드 mailer 위임)
-│   ├── guardian_aligo_sms.lib.php          알리고 SMS 어댑터 (AligoSMS 클래스 래핑)
-│   ├── guardian_aligo_kakao.lib.php        알리고 카톡 어댑터 (KakaoAlimtalk 클래스 래핑)
-│   ├── guardian_notifier.lib.php           ★ 통합 발송 엔진 (8단계 검증)
-│   ├── guardian_partner.lib.php            함께 쓰면 좋은 솔루션 카드 메타데이터
-│   ├── guardian_rule_engine.lib.php        ★ 알림 규칙 매칭 엔진
-│   ├── guardian_summary.lib.php            일일/주간 요약 처리 + 자동 정리
-│   └── guardian_dispatcher.lib.php         캡처 후 매칭 엔진 진입점
-├── templates/
-│   ├── mail_default.html                   즉시 발송 메일 템플릿
-│   ├── sms_default.txt                     SMS 본문 템플릿
-│   ├── kakao_default.txt                   카카오 알림톡 본문 템플릿
-│   ├── mail_summary_daily.html             일일 요약 메일 템플릿
-│   └── mail_summary_weekly.html            주간 요약 메일 템플릿
-└── batch/
-    └── summary_cron.php                    cron 트리거 스크립트
-
-adm/
-├── guardian_dashboard.php                   운영지킴이 대시보드
-├── guardian_log.php                         오류 로그 목록
-├── guardian_log_view.php                    오류 로그 상세 (AJAX 모달)
-├── guardian_log_action.php                  오류 로그 일괄 처리
-├── guardian_recipient.php                   수신자 목록
-├── guardian_recipient_form.php              수신자 등록/수정
-├── guardian_recipient_update.php            수신자 처리
-├── guardian_rule.php                        알림 규칙 목록
-├── guardian_rule_form.php                   규칙 등록/수정 (모드별 동적 UI)
-├── guardian_rule_update.php                 규칙 처리
-├── guardian_rule_match_log.php             ★ 규칙 매칭 추적 로그
-├── guardian_notify_log.php                  알림 발송 이력
-├── guardian_notify_log_action.php           발송 이력 일괄 처리
-├── guardian_notify_test.php                 테스트 발송
-├── guardian_test_warning.php               ★ 설치 테스트 (강제 경고 발생)
-├── guardian_config.php                      환경설정
-└── guardian_config_update.php               환경설정 처리
+repo root
+├── README.md             # GitHub 소개 문서
+└── docs/
+│   └── index.html        # 상세 사용자 매뉴얼
+└── src/
+    ├── extend/
+    │   └── gb_guardian.extend.php                  그누보드 진입점 (cf_guardian_use=0 일 때 즉시 return)
+    ├── plugin/gb_guardian/
+    │   ├── install.php                              설치 / 업그레이드 / 자동 마이그레이션
+    │   ├── cleanup.php                              v1.0→v1.1 업그레이드 후 g5_config 컬럼 정리 (1회성)
+    │   ├── README.md                                본 문서
+    │   ├── MANUAL.html                              사용자 매뉴얼 (HTML)
+    │   ├── lib/
+    │   │   ├── guardian.lib.php                    공용 함수 (메뉴 / 컨텍스트 / 등급 매핑)
+    │   │   ├── guardian_admin.lib.php              관리 화면 헬퍼 (시간 포맷 / 배지 / 카운트)
+    │   │   ├── guardian_brand.lib.php              브랜드 / 푸터 / 미해결 알림 박스
+    │   │   ├── guardian_chart.lib.php              대시보드 차트 데이터
+    │   │   ├── guardian_config.lib.php             별도 설정 테이블 + 호환 레이어 + 마이그레이션
+    │   │   ├── guardian_db.lib.php                 마스킹 / DB I/O / 디바운싱
+    │   │   ├── error_handler.lib.php               4가지 핸들러 + 통합 캡처
+    │   │   ├── guardian_protector.lib.php          ★ 보호 시스템 (비상정지/한도/쿨다운/락/야간무음)
+    │   │   ├── guardian_template.lib.php           메일/SMS/카톡 템플릿 렌더링
+    │   │   ├── guardian_mailer.lib.php             메일 어댑터 (그누보드 mailer 위임)
+    │   │   ├── guardian_aligo_sms.lib.php          알리고 SMS 어댑터 (AligoSMS 클래스 래핑)
+    │   │   ├── guardian_aligo_kakao.lib.php        알리고 카톡 어댑터 (KakaoAlimtalk 클래스 래핑)
+    │   │   ├── guardian_notifier.lib.php           ★ 통합 발송 엔진 (8단계 검증)
+    │   │   ├── guardian_partner.lib.php            함께 쓰면 좋은 솔루션 카드 메타데이터
+    │   │   ├── guardian_rule_engine.lib.php        ★ 알림 규칙 매칭 엔진
+    │   │   ├── guardian_summary.lib.php            일일/주간 요약 처리 + 자동 정리
+    │   │   └── guardian_dispatcher.lib.php         캡처 후 매칭 엔진 진입점
+    │   ├── templates/
+    │   │   ├── mail_default.html                   즉시 발송 메일 템플릿
+    │   │   ├── sms_default.txt                     SMS 본문 템플릿
+    │   │   ├── kakao_default.txt                   카카오 알림톡 본문 템플릿
+    │   │   ├── mail_summary_daily.html             일일 요약 메일 템플릿
+    │   │   └── mail_summary_weekly.html            주간 요약 메일 템플릿
+    │   └── batch/
+    │       └── summary_cron.php                    cron 트리거 스크립트
+    └── adm/
+        ├── guardian_dashboard.php                   운영지킴이 대시보드
+        ├── guardian_log.php                         오류 로그 목록
+        ├── guardian_log_view.php                    오류 로그 상세 (AJAX 모달)
+        ├── guardian_log_action.php                  오류 로그 일괄 처리
+        ├── guardian_recipient.php                   수신자 목록
+        ├── guardian_recipient_form.php              수신자 등록/수정
+        ├── guardian_recipient_update.php            수신자 처리
+        ├── guardian_rule.php                        알림 규칙 목록
+        ├── guardian_rule_form.php                   규칙 등록/수정 (모드별 동적 UI)
+        ├── guardian_rule_update.php                 규칙 처리
+        ├── guardian_rule_match_log.php             ★ 규칙 매칭 추적 로그
+        ├── guardian_notify_log.php                  알림 발송 이력
+        ├── guardian_notify_log_action.php           발송 이력 일괄 처리
+        ├── guardian_notify_test.php                 테스트 발송
+        ├── guardian_test_warning.php               ★ 설치 테스트 (강제 경고 발생)
+        ├── guardian_config.php                      환경설정
+        └── guardian_config_update.php               환경설정 처리
 ```
 
 ## 4. 설치 방법
