@@ -404,7 +404,7 @@ mbstring 미설치 환경에서는 한글 메시지 길이 컷이 정확하지 �
 ### 10.1 SSH crontab
 
 ```cron
-*/10 * * * * /usr/bin/php /var/www/g5/plugin/gb_guardian/batch/summary_cron.php
+*/10 * * * * /usr/bin/php /var/www/plugin/gb_guardian/batch/summary_cron.php
 ```
 
 ### 10.2 외부 웹 cron 서비스 (cron-job.org 등)
