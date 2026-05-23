@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{SITE_NAME} 운영지킴이</title>
+</head>
+<body style="font-family:'맑은 고딕',Arial,sans-serif; background:#f5f5f5; margin:0; padding:20px;">
+
+<div style="max-width:600px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+    <!-- 헤더 -->
+    <div style="background:linear-gradient(135deg,#1a1a2e,#0f3460); color:#fff; padding:25px 30px;">
+        <div style="font-size:13px; opacity:0.7; margin-bottom:5px;">🛡️ {SITE_NAME} 운영지킴이</div>
+        <h1 style="font-size:22px; margin:0; font-weight:700;">[{ERROR_LEVEL}] 사이트 오류 발생</h1>
+        <div style="font-size:11px; opacity:0.55; margin-top:6px;">{SUBTITLE}</div>
+    </div>
+
+    <!-- 본문 -->
+    <div style="padding:30px;">
+        <div style="background:#fef2f2; border-left:4px solid #dc2626; padding:15px; border-radius:4px; margin-bottom:25px;">
+            <div style="font-size:13px; color:#991b1b; margin-bottom:8px; font-weight:bold;">⚠️ 오류 메시지</div>
+            <div style="font-size:14px; color:#333; word-break:break-all; line-height:1.6;">
+                {ERROR_MESSAGE}
+            </div>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <tr>
+                <th style="padding:10px; text-align:left; background:#f9fafb; border:1px solid #e5e7eb; width:30%;">발생 시각</th>
+                <td style="padding:10px; border:1px solid #e5e7eb;">{ERROR_TIME}</td>
+            </tr>
+            <tr>
+                <th style="padding:10px; text-align:left; background:#f9fafb; border:1px solid #e5e7eb;">파일 위치</th>
+                <td style="padding:10px; border:1px solid #e5e7eb; font-family:Consolas,monospace; font-size:12px; word-break:break-all;">{ERROR_FILE}:{ERROR_LINE}</td>
+            </tr>
+            <tr>
+                <th style="padding:10px; text-align:left; background:#f9fafb; border:1px solid #e5e7eb;">발생 횟수</th>
+                <td style="padding:10px; border:1px solid #e5e7eb;"><strong style="color:#dc2626;">{OCCURRENCE_COUNT}회</strong></td>
+            </tr>
+            <tr>
+                <th style="padding:10px; text-align:left; background:#f9fafb; border:1px solid #e5e7eb;">발생 페이지</th>
+                <td style="padding:10px; border:1px solid #e5e7eb; word-break:break-all; font-size:12px;">{ERROR_URL}</td>
+            </tr>
+        </table>
+
+        <div style="text-align:center; margin-top:30px;">
+            <a href="{ADMIN_LOG_URL}" style="display:inline-block; padding:12px 30px; background:#0f3460; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">
+                📋 관리자 페이지에서 자세히 보기
+            </a>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <div style="background:#f9fafb; padding:20px 30px; border-top:1px solid #e5e7eb; font-size:12px; color:#666; text-align:center;">
+        <div>본 메일은 <strong>{SITE_NAME}</strong>의 그누보드 운영지킴이가 자동 발송한 알림입니다.</div>
+        <div style="margin-top:5px; opacity:0.7;">알림 설정 변경: 관리자 → 운영지킴이 → 환경설정</div>
+        {BRAND_FOOTER}
+    </div>
+
+</div>
+
+</body>
+</html>

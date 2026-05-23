@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{SITE_NAME} 일일 운영 리포트</title>
+</head>
+<body style="font-family:'맑은 고딕',Arial,sans-serif; background:#f5f5f5; margin:0; padding:20px;">
+
+<div style="max-width:640px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+    <!-- 헤더 -->
+    <div style="background:linear-gradient(135deg,#1a1a2e,#0f3460); color:#fff; padding:25px 30px;">
+        <div style="font-size:13px; opacity:0.7; margin-bottom:5px;">🛡️ {SITE_NAME} 운영지킴이</div>
+        <h1 style="font-size:22px; margin:0; font-weight:700;">📊 {PERIOD} 운영 리포트</h1>
+        <div style="font-size:13px; opacity:0.85; margin-top:8px;">{DATE_RANGE}</div>
+        <div style="font-size:11px; opacity:0.55; margin-top:6px;">{SUBTITLE}</div>
+    </div>
+
+    <!-- 미해결 FATAL/ERROR 알림 (진단 박스, 광고 X) -->
+    {UNRESOLVED_FATAL_ALERT}
+
+    <!-- 요약 통계 -->
+    <div style="padding:25px 30px; background:#fafafa; border-bottom:1px solid #e5e7eb;">
+        <table style="width:100%; border-collapse:collapse;">
+            <tr>
+                <td style="text-align:center; padding:10px;">
+                    <div style="font-size:32px; font-weight:800; color:#dc2626;">{TOTAL}</div>
+                    <div style="font-size:11px; color:#666;">총 발생 건수</div>
+                </td>
+                <td style="text-align:center; padding:10px;">
+                    <div style="font-size:32px; font-weight:800; color:#1a1a2e;">{UNIQUE_COUNT}</div>
+                    <div style="font-size:11px; color:#666;">고유 오류 수</div>
+                </td>
+                <td style="text-align:center; padding:10px;">
+                    <div style="font-size:32px; font-weight:800; color:#a80000;">{FATAL_COUNT}</div>
+                    <div style="font-size:11px; color:#666;">Fatal/Error</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- 등급별 분포 -->
+    <div style="padding:20px 30px;">
+        <h3 style="font-size:14px; margin:0 0 12px 0; color:#1a1a2e;">📈 등급별 분포</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            {LEVEL_ROWS}
+        </table>
+    </div>
+
+    <!-- 최다 발생 오류 TOP 10 -->
+    <div style="padding:20px 30px; border-top:1px solid #e5e7eb;">
+        <h3 style="font-size:14px; margin:0 0 12px 0; color:#1a1a2e;">🔥 최다 발생 오류 TOP 10</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+                <tr style="background:#f3f4f6;">
+                    <th style="padding:8px; text-align:left; border:1px solid #e5e7eb; width:80px;">등급</th>
+                    <th style="padding:8px; text-align:left; border:1px solid #e5e7eb;">메시지</th>
+                    <th style="padding:8px; text-align:right; border:1px solid #e5e7eb; width:60px;">횟수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {TOP_ERROR_ROWS}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- CTA -->
+    <div style="text-align:center; padding:25px 30px; background:#fafafa;">
+        <a href="{ADMIN_URL}" style="display:inline-block; padding:12px 30px; background:#0f3460; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">
+            📋 관리자 페이지에서 자세히 보기
+        </a>
+    </div>
+
+    <!-- 푸터 -->
+    <div style="background:#1a1a2e; padding:18px 30px; font-size:11px; color:#aaa; text-align:center;">
+        본 메일은 <strong style="color:#fff;">{SITE_NAME}</strong>의 그누보드 운영지킴이가 자동 발송한 {PERIOD} 리포트입니다.<br>
+        규칙명: {RULE_NAME} · 알림 설정 변경은 관리자 페이지에서 가능합니다.
+    </div>
+
+    <!-- WizardOfCode 작은 브랜드 표기 -->
+    {BRAND_FOOTER}
+
+</div>
+
+</body>
+</html>

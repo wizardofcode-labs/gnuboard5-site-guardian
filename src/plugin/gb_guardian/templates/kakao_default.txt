@@ -1,0 +1,8 @@
+[#{site_name}] 사이트 오류 알림
+
+#{error_level} 등급 오류가 발생했습니다.
+오류: #{error_message}
+파일: #{error_file}
+시각: #{error_time}
+
+상세 내용은 관리자 페이지에서 확인하시기 바랍니다.
