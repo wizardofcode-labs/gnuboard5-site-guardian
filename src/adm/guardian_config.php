@@ -654,7 +654,7 @@ details[open] > summary .guardian-toggle-icon::after{content:"▲ 접기";font-s
             <label>
                 <input type="checkbox" name="kakao_channel_enabled" value="1"
                        <?php echo (function_exists('guardian_config_get') && guardian_config_get('kakao_channel_enabled', true)) ? 'checked' : ''; ?>>
-                활성화 — 제작자 정보 박스에 카카오톡 채널 버튼 (유지보수 의뢰 문의 채널)
+                활성화 — 제작자 정보 박스에 카카오톡 채널 버튼 표시
             </label>
         </td>
     </tr>

@@ -55,7 +55,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.0
+ * @version 1.1.2
  */
 $sub_menu = "700990";
 include_once('./_common.php');

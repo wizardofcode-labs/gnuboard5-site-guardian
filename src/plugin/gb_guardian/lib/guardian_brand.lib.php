@@ -11,7 +11,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.0
+ * @version 1.1.2
  */
 if (!defined('_GNUBOARD_')) exit;
 
@@ -26,12 +26,12 @@ function guardian_get_brand_info()
         return function_exists('guardian_config_get') ? guardian_config_get($k, $d) : $d;
     };
     return array(
-        'name'              => 'WizardOfCode',
-        'tagline'           => '그누보드/영카트 전문 유지보수',
-        'homepage'          => $get('brand_homepage',      'https://wizardofcode.kr'),
-        'series_url'        => $get('series_page_url',     'https://wizardofcode.kr/?page_id=962'),
-        'repair_url'        => $get('repair_url',          'https://wizardofcode.kr/?page_id=941'),
-        'kakao_channel_url' => $get('kakao_channel_url',   'https://pf.kakao.com/_mkUxdn'),
+        'name'              => 'WizardOfCode',                  // 제작자 표기 — 유지
+        'tagline'           => $get('brand_tagline', ''),       // 영업문구 제거, config로만
+        'homepage'          => $get('brand_homepage', ''),      // 기본값 비움
+        'series_url'        => $get('series_page_url', ''),     // 기본값 비움
+        'repair_url'        => $get('repair_url', ''),          // 기본값 비움
+        'kakao_channel_url' => $get('kakao_channel_url', ''),   // 기본값 비움
         'logo_emoji'        => '🛡',
     );
 }
@@ -75,6 +75,14 @@ function guardian_render_brand_footer()
     }
 
     $brand = guardian_get_brand_info();
+
+    // 표시할 브랜드 링크/문구가 모두 비어 있으면 푸터를 그리지 않는다
+    if (trim($brand['homepage']) === ''
+        && trim($brand['series_url']) === ''
+        && trim($brand['tagline']) === '') {
+        return '';
+    }
+
     $name       = htmlspecialchars($brand['name'],       ENT_QUOTES, 'UTF-8');
     $tagline    = htmlspecialchars($brand['tagline'],    ENT_QUOTES, 'UTF-8');
     $homepage   = htmlspecialchars($brand['homepage'],   ENT_QUOTES, 'UTF-8');
@@ -148,21 +156,17 @@ function guardian_render_developer_info_box()
     $brand = guardian_get_brand_info();
     $dev   = guardian_get_developer_info();
 
-    $name          = htmlspecialchars($brand['name'],              ENT_QUOTES, 'UTF-8');
-    $tagline       = htmlspecialchars($brand['tagline'],           ENT_QUOTES, 'UTF-8');
-    $homepage      = htmlspecialchars($brand['homepage'],          ENT_QUOTES, 'UTF-8');
-    $repair        = htmlspecialchars($brand['repair_url'],        ENT_QUOTES, 'UTF-8');
-    $kakao_channel = htmlspecialchars($brand['kakao_channel_url'], ENT_QUOTES, 'UTF-8');
-    $company       = htmlspecialchars($dev['company'],             ENT_QUOTES, 'UTF-8');
-    $copyright     = htmlspecialchars($dev['copyright'],           ENT_QUOTES, 'UTF-8');
+    $name      = htmlspecialchars($brand['name'],     ENT_QUOTES, 'UTF-8');
+    $homepage  = htmlspecialchars($brand['homepage'], ENT_QUOTES, 'UTF-8');
+    $company   = htmlspecialchars($dev['company'],    ENT_QUOTES, 'UTF-8');
+    $copyright = htmlspecialchars($dev['copyright'],  ENT_QUOTES, 'UTF-8');
 
-    $kakao_btn = '';
-    if (!function_exists('guardian_config_get')
-        || guardian_config_get('kakao_channel_enabled', true)) {
-        $kakao_btn = '<a href="' . $kakao_channel . '" target="_blank" '
-                   . 'style="display:inline-block; padding:8px 16px; background:#FEE500; color:#3c1e1e; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold;">'
-                   . '💬 카톡 채널 (의뢰 문의)'
-                   . '</a>';
+    $homepage_btn = '';
+    if ($homepage !== '') {
+        $homepage_btn = '<a href="' . $homepage . '" target="_blank" '
+                      . 'style="display:inline-block; margin-right:8px; margin-bottom:6px; padding:8px 16px; background:#fbbf24; color:#1a1a1a; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold;">'
+                      . '🔗 제작자 사이트'
+                      . '</a>';
     }
 
     return '<div style="margin-top:30px; padding:24px 28px; background:linear-gradient(135deg,#0F3460,#1a2842); color:#fff; border-radius:12px;">'
@@ -171,115 +175,13 @@ function guardian_render_developer_info_box()
          . '🛡 ' . $name
          . '</h4>'
          . '<div style="font-size:14px; line-height:1.8; margin-bottom:16px;">'
-         . '본 솔루션은 <strong style="color:#fbbf24;">' . $name . '</strong>가 무료로 배포하는 그누보드 모니터링 도구입니다.<br>'
-         . '<span style="color:rgba(255,255,255,0.7);">' . $tagline . '</span>'
+         . '본 솔루션은 <strong style="color:#fbbf24;">' . $name . '</strong>가 무료로 배포하는 그누보드 모니터링 도구입니다.'
          . '</div>'
-         // CTA 3개
-         . '<div style="margin-bottom:18px;">'
-         . '<a href="' . $homepage . '" target="_blank" '
-         . 'style="display:inline-block; margin-right:8px; margin-bottom:6px; padding:8px 16px; background:#fbbf24; color:#1a1a1a; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold;">'
-         . '🔗 제작자 사이트'
-         . '</a>'
-         . '<a href="' . $repair . '" target="_blank" '
-         . 'style="display:inline-block; margin-right:8px; margin-bottom:6px; padding:8px 16px; background:rgba(255,255,255,0.15); color:#fff; text-decoration:none; border-radius:6px; font-size:12px; font-weight:bold;">'
-         . '🛠 유지보수 의뢰'
-         . '</a>'
-         . $kakao_btn
-         . '</div>'
-         // 응답 시간 안내
-         . '<div style="font-size:11px; color:rgba(255,255,255,0.55); margin-bottom:14px;">'
-         . '※ 카톡 채널은 평일 영업시간 24시간 이내 응답합니다.'
-         . '</div>'
+         // 제작자 사이트 버튼 (homepage가 설정된 경우에만)
+         . ($homepage_btn !== '' ? '<div style="margin-bottom:18px;">' . $homepage_btn . '</div>' : '')
          // 제작사 정보 (보조)
          . '<div style="padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); font-size:11px; color:rgba(255,255,255,0.5);">'
          . '제작사: ' . $company . ' · ' . $copyright
          . '</div>'
          . '</div>';
-}
-
-/**
- * 의뢰 페이지 URL 자동 생성. 오류 정보를 안전하게 첨부한다.
- *
- * 절대 첨부하지 않는 정보:
- *   - 사용자 IP
- *   - 전체 stack trace
- *   - 요청 URL 전체 (referer)
- *   - 세션 / 쿠키 / DB 접속 정보
- *
- * 첨부 가능 (모두 마스킹된 상태):
- *   - 호스트명 (도메인만)
- *   - 사이트명
- *   - 오류 해시 (식별용)
- *   - 오류 메시지 (200자 이내)
- *   - 파일명 (basename 만)
- *   - 발생 횟수
- *
- * @param  array|null $error_data
- * @return string
- */
-function guardian_build_repair_url($error_data = null)
-{
-    $brand = guardian_get_brand_info();
-    $base_url = $brand['repair_url'];
-
-    if (empty($error_data) || !is_array($error_data)) {
-        return $base_url . (strpos($base_url, '?') !== false ? '&' : '?') . 'source=guardian_v1.1';
-    }
-
-    global $config;
-    $host = isset($_SERVER['HTTP_HOST']) ? (string)$_SERVER['HTTP_HOST'] : '';
-    // 호스트명도 잠재적 위험 문자 제거
-    $host = preg_replace('/[^a-zA-Z0-9.\-]/', '', $host);
-
-    $error_msg = '';
-    if (isset($error_data['error_message']) && $error_data['error_message'] !== '') {
-        $error_msg = (string)$error_data['error_message'];
-    } elseif (isset($error_data['message']) && $error_data['message'] !== '') {
-        $error_msg = (string)$error_data['message'];
-    }
-    if (function_exists('mb_substr') && $error_msg !== '') {
-        $error_msg = mb_substr($error_msg, 0, 200, 'UTF-8');
-    } elseif ($error_msg !== '') {
-        $error_msg = substr($error_msg, 0, 200);
-    }
-
-    $error_file = '';
-    if (isset($error_data['error_file']) && $error_data['error_file'] !== '') {
-        $error_file = basename((string)$error_data['error_file']);
-    } elseif (isset($error_data['file']) && $error_data['file'] !== '') {
-        $error_file = basename((string)$error_data['file']);
-    }
-
-    $level = '';
-    if (isset($error_data['error_level']) && $error_data['error_level'] !== '') {
-        $level = (string)$error_data['error_level'];
-    } elseif (isset($error_data['level']) && $error_data['level'] !== '') {
-        $level = (string)$error_data['level'];
-    }
-
-    $line = 0;
-    if (isset($error_data['error_line']) && $error_data['error_line'] !== '') {
-        $line = (int)$error_data['error_line'];
-    } elseif (isset($error_data['line']) && $error_data['line'] !== '') {
-        $line = (int)$error_data['line'];
-    }
-
-    $params = array(
-        'source'     => 'guardian_v1.1',
-        'site'       => $host,
-        'site_name'  => isset($config['cf_title']) ? (string)$config['cf_title'] : '',
-        'error_hash' => isset($error_data['error_hash']) ? (string)$error_data['error_hash'] : '',
-        'level'      => $level,
-        'message'    => $error_msg,
-        'file'       => $error_file,
-        'line'       => $line,
-        'count'      => isset($error_data['occurrence_count']) ? (int)$error_data['occurrence_count'] : 1,
-    );
-    // 빈 값 제거
-    $params = array_filter($params, function ($v) {
-        return $v !== '' && $v !== 0 && $v !== null;
-    });
-
-    $separator = (strpos($base_url, '?') !== false) ? '&' : '?';
-    return $base_url . $separator . http_build_query($params);
 }

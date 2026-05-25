@@ -16,7 +16,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.0
+ * @version 1.1.2
  */
 include_once('../../common.php');
 
@@ -340,9 +340,9 @@ $guardian_config_defaults = array(
     array('series_section_enabled',    1,                                  'bool'),
     array('kakao_channel_enabled',     1,                                  'bool'),
     // URL 기본값
-    array('repair_url',                'https://wizardofcode.kr/?page_id=941',   'string'),
-    array('series_page_url',           'https://wizardofcode.kr/?page_id=962',   'string'),
-    array('kakao_channel_url',         'https://pf.kakao.com/_mkUxdn',     'string'),
+    array('repair_url',                '',   'string'),
+    array('series_page_url',           '',   'string'),
+    array('kakao_channel_url',         '',   'string'),
 );
 $defaults_added = 0;
 foreach ($guardian_config_defaults as $def) {

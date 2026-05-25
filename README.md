@@ -3,15 +3,11 @@
 📖 사용자 매뉴얼  
 https://wizardofcode-labs.github.io/gnuboard5-site-guardian/
 
-🚀 유지보수 문의  
-https://wizardofcode.kr/?page_id=941
-
 > 그누보드5 / 영카트5 사이트의 PHP 오류를 자동 감지해 메일·SMS·카카오 알림톡으로 알리는 운영 진단키트.
 
-- **버전**: v1.1
+- **버전**: v1.1.2
 - **저작권**: (c) 2026 K3SOFT / WizardOfCode
 - **요구 환경**: 그누보드5 5.5+ / PHP 5.6 ~ 8.3 / MySQL(MariaDB) 5.5+
-- **문의**: 카카오톡 채널 [WizardOfCode](https://pf.kakao.com/_mkUxdn) (설치 지원·오류 수정 의뢰)
 
 ---
 
@@ -491,11 +487,8 @@ ALTER TABLE g5_config DROP COLUMN cf_guardian_summary_last_weekly;
 
 운영지킴이는 **오픈 공개형** 솔루션입니다. 자유롭게 다운로드·수정·재배포하실 수 있습니다 (위 라이선스 범위 내).
 
-설치 지원·오류 수정 의뢰·기능 개선 제안 등 모든 문의는 **카카오톡 채널** 로 연락 주시기 바랍니다.
-
 - 제작: WizardOfCode / K3SOFT
-- 카카오톡 채널: [WizardOfCode](https://pf.kakao.com/_mkUxdn)
-- 유지보수 의뢰: <https://wizardofcode.kr/?page_id=941>
+- https://wizardofcode.kr
 
 오류 보고 시 다음 3가지 화면의 스크린샷을 함께 보내주시면 빠르게 진단해 드릴 수 있습니다.
 

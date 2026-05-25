@@ -19,7 +19,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.0
+ * @version 1.1.2
  */
 include_once('../../common.php');
 

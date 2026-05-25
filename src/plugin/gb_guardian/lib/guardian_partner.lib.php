@@ -13,7 +13,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.0
+ * @version 1.1.2
  */
 if (!defined('_GNUBOARD_')) exit;
 
@@ -24,47 +24,12 @@ if (!defined('_GNUBOARD_')) exit;
  */
 function guardian_get_partner_solutions()
 {
-    // 가격 정보는 의도적으로 포함하지 않는다. 판매처 / 제작자 정책 변경 시
-    // 운영지킴이를 재배포해야 하는 부담이 생기므로, 사용자가 클릭하면 최신 가격을
-    // 판매처에서 직접 확인하도록 유도한다.
-    return array(
-        'smtp_manager_v2' => array(
-            'name'        => 'SMTP Manager v2.0',
-            'subtitle'    => '캠페인 발송 + 예약 메일 + 자동 수신거부',
-            'description' => 'SMTP 인증 메일 발송 + 캠페인 관리 + 발송 모니터링. 운영지킴이 알림 메일을 안정적으로 발송합니다.',
-            'url'         => 'https://sir.kr/contents-mall/items/1772284664',
-            'cta_label'   => '자세히 보기',
-            'icon'        => '📧',
-            'category'    => 'mail',
-        ),
-        'aligo_kakao' => array(
-            'name'        => '알리고 카카오 알림톡',
-            'subtitle'    => 'SMS + 알림톡 + 휴대폰 인증 통합',
-            'description' => '카카오 알림톡으로 SMS보다 저렴하게 발송. 휴대폰 인증까지 한 패키지.',
-            'url'         => 'https://sir.kr/contents-mall/items/1734924774',
-            'cta_label'   => '자세히 보기',
-            'icon'        => '💬',
-            'category'    => 'kakao',
-        ),
-        'aligo_sms' => array(
-            'name'        => '알리고 SMS 문자 발송',
-            'subtitle'    => '코어 변경 최소 + 휴대폰 인증',
-            'description' => '알리고 SMS API 통합. 휴대폰 문자 인증 포함. 코어 변경 최소화 설계.',
-            'url'         => 'https://sir.kr/contents-mall/items/1732015631',
-            'cta_label'   => '자세히 보기',
-            'icon'        => '📱',
-            'category'    => 'sms',
-        ),
-        'wizardofcode_repair' => array(
-            'name'        => 'WizardOfCode 유지보수',
-            'subtitle'    => '그누보드/영카트 전문 수정 의뢰',
-            'description' => '운영지킴이 제작자가 직접 수정합니다. 평일 24시간 이내 응답. 첫 진단 무료.',
-            'url'         => 'https://wizardofcode.kr/?page_id=941',
-            'cta_label'   => '의뢰 페이지',
-            'icon'        => '🛠',
-            'category'    => 'service',
-        ),
-    );
+    /*
+     * 유료/자체배포 버전: 시리즈 상품 메타데이터 배열을 여기 정의.
+     * 각 항목 구조: name, subtitle, description, url, cta_label, icon, category
+     * 무료 배포본에서는 빈 배열을 반환한다. guardian_config 값으로 되살릴 수 있다.
+     */
+    return array();
 }
 
 /**
@@ -82,6 +47,11 @@ function guardian_render_series_section()
     }
 
     $partners = guardian_get_partner_solutions();
+
+    // 노출할 시리즈 항목이 없으면 섹션 전체를 그리지 않는다
+    if (empty($partners)) {
+        return '';
+    }
     $brand    = function_exists('guardian_get_brand_info') ? guardian_get_brand_info() : array('name' => 'WizardOfCode');
     $brand_name = htmlspecialchars((string)$brand['name'], ENT_QUOTES, 'UTF-8');
 
