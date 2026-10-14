@@ -118,7 +118,11 @@ function guardian_check_daily_limit($channel)
             AND sent_dt < DATE_ADD(CURDATE(), INTERVAL 1 DAY) ",
         false
     );
-    $today = !empty($row['cnt']) ? (int)$row['cnt'] : 0;
+    if (!isset($row['cnt'])) {
+        @error_log('[GB Guardian] 일일 발송 한도 조회 실패: 발송 차단');
+        return false;
+    }
+    $today = (int)$row['cnt'];
 
     return ($today < $limit);
 }
@@ -181,7 +185,7 @@ function guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, 
     $ch   = sql_escape_string($channel);
     $addr = sql_escape_string($recipient_addr);
 
-    $row = sql_fetch(
+    $result = @sql_query(
         " SELECT notify_id
           FROM `{$g5['guardian_notify_log_table']}`
           WHERE error_hash = '{$hash}'
@@ -193,6 +197,12 @@ function guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, 
         false
     );
 
+    if (!$result) {
+        @error_log('[GB Guardian] 발송 쿨다운 조회 실패: 발송 차단');
+        return false;
+    }
+    $row = sql_fetch_array($result);
+    if (function_exists('sql_free_result')) sql_free_result($result);
     return empty($row['notify_id']);
 }
 

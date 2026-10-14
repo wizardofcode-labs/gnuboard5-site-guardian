@@ -179,4 +179,15 @@ check(count($visible)===1 && $visible[0]['display_status']==='pending', '관리�
 $f_status='unknown'; eval($whereBlock); eval($selectBlock);
 $visible=$result->fetchAll(PDO::FETCH_ASSOC);
 check(count($visible)===1 && $visible[0]['display_status']==='unknown', '만료 예약은 다음 시도 전에도 관리자 화면에서 결과 미확인 표시');
+// 보호 조회의 SQL 실패는 이력 없음과 구분하여 발송을 차단한다.
+foreach (array('daily_read', 'cooldown_read', 'global_read') as $readFailure) {
+    reset_fixture();
+    $fixtureFailure = $readFailure;
+    $options = array('dedup_scope' => $readFailure === 'global_read' ? 'global' : 'rule');
+    $result = guardian_notify(array('error_hash' => fixture_hash($readFailure), 'level' => 'WARNING', 'message' => 'fixture'), 'email', 1, $options);
+    check(!$result['success'] && count_rows('fixture_deliveries') === 0 && count_rows('fixture_notify') === 0, $readFailure . ': 보호 조회 실패 시 예약/외부 발송 금지');
+    $fixtureFailure = '';
+    $result = guardian_notify(array('error_hash' => fixture_hash($readFailure), 'level' => 'WARNING', 'message' => 'fixture'), 'email', 1, $options);
+    check($result['success'] && count_rows('fixture_deliveries') === 1, $readFailure . ': DB 복구 후 락 해제 및 발송 회복');
+}
 echo "PASS concurrency: {$checks} checks (실제 PHP 다중 프로세스, 외부 발송 없음)\n";

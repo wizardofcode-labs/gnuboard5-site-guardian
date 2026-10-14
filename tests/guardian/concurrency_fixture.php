@@ -18,6 +18,9 @@ class KakaoAlimtalk {}
 function sql_escape_string($value) { global $pdo; return substr($pdo->quote((string)$value), 1, -1); }
 function sql_query($sql, $error = true) {
     global $pdo, $fixtureFailure, $fixtureDelay;
+    if ($fixtureFailure === 'daily_read' && strpos($sql, 'SELECT COUNT(*) AS cnt') !== false) return false;
+    if ($fixtureFailure === 'cooldown_read' && strpos($sql, 'SELECT notify_id') !== false) return false;
+    if ($fixtureFailure === 'global_read' && strpos($sql, 'SELECT n.notify_id') !== false) return false;
     if ($fixtureFailure === 'reserve' && strpos($sql, 'INSERT INTO `fixture_notify`') !== false) return false;
     if ($fixtureFailure === 'finalize' && strpos($sql, 'UPDATE `fixture_notify`') !== false && strpos($sql, "status = 'unknown'") === false) return false;
     if ($fixtureFailure === 'group' && strpos($sql, 'INSERT INTO `fixture_log`') !== false) return false;

@@ -391,7 +391,7 @@ function guardian_is_global_dedup_blocked($error_hash, $recipient_id, $cooldown_
     $min  = max(1, (int)$cooldown_min);
 
     // 수신자의 모든 채널 주소(이메일/휴대폰) 와 매칭. 글로벌이라 채널/규칙 무관.
-    $row = sql_fetch(
+    $result = @sql_query(
         " SELECT n.notify_id
           FROM `{$g5['guardian_notify_log_table']}` n
           INNER JOIN `{$g5['guardian_recipient_table']}` r
@@ -404,6 +404,12 @@ function guardian_is_global_dedup_blocked($error_hash, $recipient_id, $cooldown_
         false
     );
 
+    if (!$result) {
+        @error_log('[GB Guardian] 전역 중복 조회 실패: 발송 차단');
+        return true;
+    }
+    $row = sql_fetch_array($result);
+    if (function_exists('sql_free_result')) sql_free_result($result);
     return !empty($row['notify_id']);
 }
 

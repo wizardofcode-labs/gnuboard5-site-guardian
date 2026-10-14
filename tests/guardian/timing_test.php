@@ -17,6 +17,7 @@ if ($mode !== '') {
     function sql_query($sql,$error=true) {
         global $queryCount,$lastId,$logId;
         $queryCount++;
+        if (strpos($sql, 'SELECT notify_id') !== false) return (object)array('row' => sql_fetch($sql, false));
         if (strpos($sql,'INSERT INTO')!==false) {
             $lastId++;
             if (strpos($sql,'`fixture_log`')!==false) $logId=$lastId;
@@ -39,6 +40,7 @@ if ($mode !== '') {
         if (strpos($sql,'SELECT notify_id')!==false) return $mode==='cooldown' || $sendCalls>0 ? array('notify_id'=>1) : array();
         return array();
     }
+    function sql_fetch_array($result) { return $result->row; }
     function sql_insert_id() { global $lastId; return $lastId; }
     function sql_free_result($r) {}
     function guardian_render_template($channel,array $data) { return array('subject'=>'fixture','body'=>'fixture'); }
