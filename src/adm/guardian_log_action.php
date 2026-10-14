@@ -153,11 +153,11 @@ switch ($act) {
         break;
 
     case 'delete':
-        @sql_query(
-            " DELETE FROM `{$g5['guardian_log_table']}`
-              WHERE log_id IN ({$ids_str}) ",
-            false
-        );
+        // 비활성 상태의 관리자 화면에서도 상세 테이블 정리가 가능하도록 로드.
+        include_once(G5_PLUGIN_PATH . '/gb_guardian/lib/guardian_db.lib.php');
+        if (!guardian_db_delete_logs($ids)) {
+            guardian_action_respond(false, '로그 또는 발생 상세 삭제에 실패했습니다. 다시 확인해주세요.', array(), $is_single);
+        }
         guardian_action_respond(
             true,
             $count . '건을 삭제했습니다.',

@@ -10,9 +10,9 @@
  *   3. 채널 사용 가능 (어댑터 / 알리고 / 함수 존재)
  *   4. 수신자 활성 + 채널별 주소 보유
  *   5. 야간 무음 시간대 (SMS / 카톡만)
- *   6. 일일 한도
- *   7. 동일 오류 쿨다운
- *   8. 재진입 락
+ *   6. 요청 내 재진입 락
+ *   7. DB 잠금 안에서 일일 한도 / 동일 오류 쿨다운 / 전역 중복 재검사
+ *   8. 발송 예약(pending) 저장
  *
  * 모든 발송은 try-catch + finally 락 해제로 보호된다.
  *
@@ -36,6 +36,7 @@ if (!defined('_GNUBOARD_')) exit;
  *                                 - cooldown_min        : 쿨다운 분 (default 30)
  *                                 - silent_fallback_to_email : 야간 무음 시 메일 폴백 (default false)
  *                                 - rule_id             : 규칙 ID (default 0)
+ *                                 - dedup_scope         : rule | global (default rule)
  * @return array                array('success' => bool, 'reason' => string, 'channel' => string)
  */
 function guardian_notify(array $error_data, $channel, $recipient_id, array $options = array())
@@ -85,48 +86,49 @@ function guardian_notify(array $error_data, $channel, $recipient_id, array $opti
         return array('success' => false, 'reason' => '야간 무음 시간대', 'channel' => $channel);
     }
 
-    // ---- 6. 일일 한도 ----
-    if (!guardian_check_daily_limit($channel)) {
-        return array('success' => false, 'reason' => '일일 한도 초과', 'channel' => $channel);
-    }
-
-    // ---- 7. 쿨다운 ----
+    // ---- 6/7. 일일 한도/쿨다운은 DB 잠금 안에서 다시 검사하고 예약한다. ----
     // cooldown_min 옵션은 호출자가 항상 명시 전달 (매칭 엔진 = 규칙 cooldown_min,
     // 테스트 발송 = 0). 폴백 30 분은 외부에서 직접 호출 시 안전 기본값.
     $cooldown_min = isset($options['cooldown_min']) ? (int)$options['cooldown_min'] : 30;
 
     $error_hash = isset($error_data['error_hash']) ? (string)$error_data['error_hash'] : '';
-    if (!guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, $cooldown_min)) {
-        // 쿨다운은 조용한 차단 — 결과 반환만 하고 notify_log 에 기록 안 함
-        return array('success' => false, 'reason' => '쿨다운 중 (조용한 차단)', 'channel' => $channel);
-    }
 
-    // ---- 8. 재진입 락 ----
+    // ---- 6. 요청 내 재진입 락 ----
     if (!guardian_acquire_lock($channel)) {
         return array('success' => false, 'reason' => '재진입 차단', 'channel' => $channel);
-    }
-
-    // ---- 외부 확장점 (외부 모듈이 활용) ----
-    // 그누보드 훅 트리거 함수는 run_event(). do_action 은 워드프레스 컨벤션이라
-    // 그누보드 환경에서는 호출되지 않는 죽은 훅이 된다.
-    if (function_exists('run_event')) {
-        run_event('guardian_before_notify', $channel, $recipient, $error_data, $options);
     }
 
     // ---- 실제 발송 ----
     // try-catch-finally 패턴 (PHP 5.5+) — finally 가 락 해제를 보장한다.
     // catch 안에서 또 throw 가 발생해도 락이 풀린다.
     $result = array('success' => false, 'reason' => '발송 미시도', 'channel' => $channel);
+    $notify_id = 0;
     try {
+        $reservation = guardian_reserve_notification($error_hash, $channel, $recipient_addr,
+            $recipient_id, $cooldown_min, $rule_id, isset($options['dedup_scope']) ? $options['dedup_scope'] : 'rule');
+        $notify_id = (int)$reservation['notify_id'];
+        if ($notify_id <= 0) {
+            return array('success' => false, 'reason' => $reservation['reason'], 'channel' => $channel);
+        }
+        // 이 시점에는 DB 잠금이 해제되어 있다. 외부 네트워크 대기 동안 SQL 잠금을 잡지 않는다.
+        // 확장 훅도 try/finally 안에서 실행해 예외가 발생해도 재진입 락을 해제한다.
+        if (function_exists('run_event')) {
+            run_event('guardian_before_notify', $channel, $recipient, $error_data, $options);
+        }
         $rendered = guardian_render_template($channel, $error_data);
 
-        $route = guardian_route_to_channel(
-            $channel,
-            $recipient_addr,
-            isset($rendered['subject']) ? (string)$rendered['subject'] : '',
-            isset($rendered['body'])    ? (string)$rendered['body']    : '',
-            $error_data
-        );
+        $send_started = guardian_timing_now();
+        try {
+            $route = guardian_route_to_channel(
+                $channel,
+                $recipient_addr,
+                isset($rendered['subject']) ? (string)$rendered['subject'] : '',
+                isset($rendered['body'])    ? (string)$rendered['body']    : '',
+                $error_data
+            );
+        } finally {
+            guardian_timing_add('notify_send_ms', $send_started);
+        }
 
         $result = array(
             'success' => !empty($route['success']),
@@ -135,14 +137,19 @@ function guardian_notify(array $error_data, $channel, $recipient_id, array $opti
         );
 
         // 결과 기록
-        guardian_log_notify_result(
+        $recorded = guardian_log_notify_result(
             $error_hash,
             $channel,
             $recipient_addr,
             $result['success'] ? 'success' : 'failed',
             $result['reason'],
-            $rule_id
+            $rule_id,
+            $notify_id
         );
+        if (!$recorded) {
+            $result['reason'] .= ' (발송 결과 DB 기록 실패: 예약 유지)';
+            @error_log('[GB Guardian] 발송 결과 DB 기록 실패 notify_id=' . $notify_id);
+        }
 
         // g5_guardian_log.notified 플래그 갱신
         if ($result['success']
@@ -162,10 +169,20 @@ function guardian_notify(array $error_data, $channel, $recipient_id, array $opti
         try {
             guardian_log_notify_result(
                 $error_hash, $channel, $recipient_addr,
-                'failed', 'Exception: ' . $e->getMessage(), $rule_id
+                'failed', 'Exception: ' . $e->getMessage(), $rule_id, $notify_id
             );
         } catch (Exception $e2) {
             // 의도적 무시 — 사이트 절대 안 죽이기
+        }
+    } catch (Throwable $e) {
+        $result = array('success' => false, 'reason' => 'Engine error: ' . $e->getMessage(), 'channel' => $channel);
+        if ($notify_id > 0) {
+            try {
+                guardian_log_notify_result($error_hash, $channel, $recipient_addr,
+                    'failed', $result['reason'], $rule_id, $notify_id);
+            } catch (Exception $e2) {
+            } catch (Throwable $e2) {
+            }
         }
     } finally {
         guardian_release_lock($channel);
@@ -176,6 +193,52 @@ function guardian_notify(array $error_data, $channel, $recipient_id, array $opti
     }
 
     return $result;
+}
+
+/**
+ * 발송 전에 pending 이력을 선점한다. 사이트별 짧은 DB 잠금으로 모든 예약을 직렬화해
+ * 동일 주소/채널 쿨다운, 규칙 전역 중복 제거 및 일일 한도를 원자적으로 확인한다.
+ * 실제 외부 발송은 잠금 밖에서 실행한다. 예약 기록 실패 시 발송하지 않는다.
+ */
+function guardian_reserve_notification($error_hash, $channel, $recipient_addr, $recipient_id, $cooldown_min, $rule_id, $dedup_scope)
+{
+    global $g5;
+    $denied = array('notify_id' => 0, 'reason' => '발송 예약 실패');
+    if ($error_hash === '' || empty($g5['guardian_notify_log_table'])) return $denied;
+    $lock = guardian_db_acquire_named_lock('notify_reservation');
+    if ($lock === '') {
+        $denied['reason'] = '발송 예약 DB 잠금 획득 실패';
+        return $denied;
+    }
+    try {
+        // 중단된 PHP 요청/DB 결과 기록 실패가 영구적으로 발송을 막지 않도록 10분 예약.
+        // 만료는 실패로 단정하지 않고 결과 미확인으로 기록한다.
+        if (!@sql_query(" UPDATE `{$g5['guardian_notify_log_table']}`
+            SET status = 'unknown', fail_reason = '발송 예약 10분 만료: 결과 미확인'
+            WHERE error_hash = '" . sql_escape_string($error_hash) . "'
+              AND status = 'pending' AND sent_dt <= DATE_SUB(NOW(), INTERVAL 10 MINUTE) ", false)) return $denied;
+        if (!guardian_check_daily_limit($channel)) {
+            $denied['reason'] = '일일 한도 초과';
+            return $denied;
+        }
+        if (!guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, $cooldown_min)) {
+            $denied['reason'] = '쿨다운 또는 발송 예약 중 (조용한 차단)';
+            return $denied;
+        }
+        if ($dedup_scope === 'global') {
+            if (!function_exists('guardian_is_global_dedup_blocked')
+                || guardian_is_global_dedup_blocked($error_hash, $recipient_id, $cooldown_min)) {
+                $denied['reason'] = '전역 중복 또는 발송 예약 중';
+                return $denied;
+            }
+        }
+        if (!guardian_log_notify_result($error_hash, $channel, $recipient_addr,
+            'pending', '발송 예약/진행 중', $rule_id)) return $denied;
+        $id = (int)sql_insert_id();
+        return $id > 0 ? array('notify_id' => $id, 'reason' => '') : $denied;
+    } finally {
+        guardian_db_release_named_lock($lock);
+    }
 }
 
 // =====================================================================
@@ -348,15 +411,22 @@ function guardian_get_recipient_address(array $recipient, $channel)
  * @param  string $error_hash
  * @param  string $channel
  * @param  string $recipient_addr
- * @param  string $status        'success' | 'failed'
+ * @param  string $status        'pending' | 'success' | 'failed' | 'unknown'
  * @param  string $reason
  * @param  int    $rule_id        규칙 ID (현재는 0)
- * @return void
+ * @param  int    $notify_id 예약 ID. 0이면 신규 INSERT, 양수면 해당 예약 결과 갱신.
+ * @return bool 기록 성공 여부
  */
-function guardian_log_notify_result($error_hash, $channel, $recipient_addr, $status, $reason = '', $rule_id = 0)
+function guardian_log_notify_result($error_hash, $channel, $recipient_addr, $status, $reason = '', $rule_id = 0, $notify_id = 0)
 {
     global $g5;
-    if (empty($g5['guardian_notify_log_table'])) return;
+    if (empty($g5['guardian_notify_log_table'])) return false;
+    if ($notify_id > 0) {
+        return (bool)@sql_query(" UPDATE `{$g5['guardian_notify_log_table']}`
+            SET status = '" . sql_escape_string($status) . "',
+                fail_reason = '" . sql_escape_string($reason) . "', sent_dt = NOW()
+            WHERE notify_id = " . (int)$notify_id . " ", false);
+    }
 
     $sql = " INSERT INTO `{$g5['guardian_notify_log_table']}`
              (rule_id, error_hash, channel, recipient, status, fail_reason, sent_dt)
@@ -369,7 +439,7 @@ function guardian_log_notify_result($error_hash, $channel, $recipient_addr, $sta
                  '" . sql_escape_string((string)$reason) . "',
                  NOW()
              ) ";
-    @sql_query($sql, false);
+    return (bool)@sql_query($sql, false);
 }
 
 // =====================================================================

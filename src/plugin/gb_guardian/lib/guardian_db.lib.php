@@ -16,6 +16,7 @@
  * @version 1.0.0
  */
 if (!defined('_GNUBOARD_')) exit;
+require_once __DIR__ . '/guardian_timing.lib.php';
 
 // =====================================================================
 // 1. 마스킹
@@ -168,10 +169,16 @@ function guardian_truncate($text, $max_len)
  */
 function guardian_db_is_in_cooldown($error_hash)
 {
+    return guardian_db_get_cooldown_log_id($error_hash) > 0;
+}
+
+/** 쿨다운 검사에서 선택한 그룹 ID를 반환해 상세 내역도 같은 그룹에 연결한다. */
+function guardian_db_get_cooldown_log_id($error_hash)
+{
     global $g5, $config;
 
     if (empty($g5['guardian_log_table']) || $error_hash === '') {
-        return false;
+        return 0;
     }
 
     $cooldown_min = (isset($config['cf_guardian_default_cooldown_min']) && $config['cf_guardian_default_cooldown_min'] !== '')
@@ -188,7 +195,7 @@ function guardian_db_is_in_cooldown($error_hash)
               ORDER BY log_id DESC
               LIMIT 1 ";
     $row = sql_fetch($sql, false);
-    return !empty($row['log_id']);
+    return !empty($row['log_id']) ? (int)$row['log_id'] : 0;
 }
 
 /**
@@ -200,7 +207,7 @@ function guardian_db_is_in_cooldown($error_hash)
  * @param  string $error_hash 64자 sha256 해시
  * @return void
  */
-function guardian_db_increment_count($error_hash)
+function guardian_db_increment_count($error_hash, $log_id = 0)
 {
     global $g5;
 
@@ -209,10 +216,11 @@ function guardian_db_increment_count($error_hash)
     }
 
     $hash = sql_escape_string($error_hash);
+    $where = $log_id > 0 ? 'log_id = ' . (int)$log_id : "error_hash = '{$hash}'";
     $sql  = " UPDATE `{$g5['guardian_log_table']}`
               SET occurrence_count = occurrence_count + 1,
                   last_occurred_dt = NOW()
-              WHERE error_hash = '{$hash}'
+              WHERE {$where}
               ORDER BY log_id DESC
               LIMIT 1 ";
     @sql_query($sql, false);
@@ -256,7 +264,7 @@ function guardian_db_insert(array $data)
               0,
               0,
               NOW()) ";
-    @sql_query($sql, false);
+    if (!@sql_query($sql, false)) return 0;
 
     // 새로 생성된 AUTO_INCREMENT 값을 가져온다. mysqli / mysql 양쪽 폴백.
     $new_id = 0;
@@ -297,4 +305,122 @@ function guardian_db_get_latest_log_id($error_hash)
         false
     );
     return !empty($row['log_id']) ? (int)$row['log_id'] : 0;
+}
+
+/** 설치 전에는 기존 캡처 동작을 유지한다. 존재 여부는 요청별로 한 번 확인. */
+function guardian_db_occurrence_ready()
+{
+    global $g5;
+    static $ready = null;
+    if ($ready !== null) return $ready;
+    if (empty($g5['guardian_occurrence_table'])) return $ready = false;
+    $result = @sql_query(" SELECT occurrence_id FROM `{$g5['guardian_occurrence_table']}` LIMIT 0 ", false);
+    $ready = (bool)$result;
+    if ($result && function_exists('sql_free_result')) sql_free_result($result);
+    return $ready;
+}
+
+/** DB/테이블별 이름 공간. 잠금명은 MySQL의 64자 제한을 지킨다. */
+function guardian_db_acquire_named_lock($purpose, array $parts = array(), $timeout = 5)
+{
+    global $g5;
+    static $database = null;
+    $wait_started = 0;
+    try {
+        if ($database === null) {
+            $row = sql_fetch(' SELECT DATABASE() AS db_name ', false);
+            if (empty($row['db_name'])) return '';
+            $database = (string)$row['db_name'];
+        }
+        $name = 'gbg:' . substr(hash('sha256', serialize(array($database,
+            isset($g5['guardian_log_table']) ? $g5['guardian_log_table'] : '', $purpose, $parts))), 0, 60);
+        $wait_started = guardian_timing_now();
+        $row = sql_fetch(" SELECT GET_LOCK('" . sql_escape_string($name) . "', " . max(0, (int)$timeout) . ") AS acquired ", false);
+        return isset($row['acquired']) && (int)$row['acquired'] === 1 ? $name : '';
+    } catch (Exception $e) {
+        return '';
+    } catch (Throwable $e) {
+        return '';
+    } finally {
+        if ($purpose === 'capture') guardian_timing_add('group_lock_ms', $wait_started);
+        elseif ($purpose === 'notify_reservation') guardian_timing_add('notify_lock_ms', $wait_started);
+    }
+}
+
+function guardian_db_release_named_lock($name)
+{
+    if ($name === '') return;
+    try {
+        @sql_query(" SELECT RELEASE_LOCK('" . sql_escape_string($name) . "') ", false);
+    } catch (Exception $e) {
+    } catch (Throwable $e) {
+    }
+}
+
+/** 상세 저장 성공 여부. DB 예외도 실패로 반환해 그룹 수집/알림을 계속한다. */
+function guardian_db_insert_occurrence($log_id, array $detail)
+{
+    global $g5;
+    try {
+        if ($log_id <= 0 || !guardian_db_occurrence_ready()) return false;
+        return (bool)@sql_query(
+            " INSERT INTO `{$g5['guardian_occurrence_table']}` (log_id, wr_id, bo_table, source, failure, occurred_dt)
+              VALUES (" . (int)$log_id . ", " . (int)$detail['wr_id'] . ",
+              '" . sql_escape_string($detail['bo_table']) . "',
+              '" . sql_escape_string($detail['source']) . "',
+              '" . sql_escape_string($detail['failure']) . "', NOW()) ", false
+        );
+    } catch (Exception $e) {
+        return false;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/** 관리자 삭제: 부모를 지운 후 상세도 지운다. 고아 정리는 자동 정리에서도 재시도. */
+function guardian_db_delete_logs(array $log_ids)
+{
+    global $g5;
+    $ids = array();
+    foreach ($log_ids as $id) {
+        if ((int)$id > 0) $ids[] = (int)$id;
+    }
+    if (empty($ids) || empty($g5['guardian_log_table'])) return false;
+    $ids_str = implode(',', array_unique($ids));
+    if (!@sql_query(" DELETE FROM `{$g5['guardian_log_table']}` WHERE log_id IN ({$ids_str}) ", false)) return false;
+    if (guardian_db_occurrence_ready()) {
+        if (!@sql_query(" DELETE FROM `{$g5['guardian_occurrence_table']}` WHERE log_id IN ({$ids_str}) ", false)) return false;
+    }
+    return true;
+}
+
+/** 한 번에 50건씩 마지막 ID를 커서로 사용해 보관 중인 전체 내역을 조회한다. */
+function guardian_db_get_occurrences($log_id, $before_id = 0)
+{
+    global $g5;
+    $page = array('available' => guardian_db_occurrence_ready(), 'items' => array(), 'next_before_id' => 0);
+    if (!$page['available']) return $page;
+    $before = $before_id > 0 ? ' AND occurrence_id < ' . (int)$before_id : '';
+    $result = @sql_query(
+        " SELECT occurrence_id, wr_id, bo_table, source, failure, occurred_dt
+          FROM `{$g5['guardian_occurrence_table']}` WHERE log_id = " . (int)$log_id . $before . "
+          ORDER BY occurrence_id DESC LIMIT 51 ", false
+    );
+    if ($result) {
+        while ($row = sql_fetch_array($result)) {
+            if (count($page['items']) === 50) {
+                $last = end($page['items']);
+                $page['next_before_id'] = (int)$last['occurrence_id'];
+                break;
+            }
+            $row['occurrence_id'] = (int)$row['occurrence_id'];
+            $row['wr_id'] = (int)$row['wr_id'];
+            // 검증된 게시판 식별자만 사용. 게시판 열람 권한은 bbs에서 검사한다.
+            $row['log_url'] = preg_match('/^[A-Za-z0-9_]{1,50}$/D', $row['bo_table'])
+                ? G5_BBS_URL . '/board.php?bo_table=' . rawurlencode($row['bo_table']) . '&wr_id=' . $row['wr_id'] : '';
+            $page['items'][] = $row;
+        }
+        if (function_exists('sql_free_result')) sql_free_result($result);
+    }
+    return $page;
 }

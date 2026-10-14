@@ -3,7 +3,7 @@
  * 그누보드 운영지킴이 - 설치 / 업그레이드 스크립트
  *
  * 본 스크립트는 다음을 수행한다.
- *   1. 7개 운영지킴이 테이블 생성 (CREATE TABLE IF NOT EXISTS)
+ *   1. 8개 운영지킴이 테이블 생성 (CREATE TABLE IF NOT EXISTS)
  *      그누보드 g5_config 테이블은 절대 수정하지 않는다 (v1.1+).
  *   2. v1.0 → v1.1 업그레이드 환경에서만 g5_config.cf_guardian_* → guardian_config
  *      자동 마이그레이션. 신규 v1.1 설치 시에는 g5_config 변경 0건.
@@ -18,13 +18,19 @@
  * @package gb_guardian
  * @version 1.1.2
  */
-include_once('../../common.php');
+include_once(__DIR__ . '/../../common.php');
 
 if (!defined('_GNUBOARD_')) exit;
 
-// 관리자만 접근 가능 — 그누보드 컨벤션
+// alert()의 bbs/alert.php는 현재 폴더의 ./_common.php를 찾으므로 여기서 사용하지 않는다.
+// 설치 처리를 시작하기 전에 접근을 차단하고 로그인 후 이 페이지로 돌아오게 안내한다.
 if (!$is_admin) {
-    alert('관리자만 접근 가능합니다.');
+    http_response_code(403);
+    header('Content-Type: text/html; charset=utf-8');
+    $login_url = G5_BBS_URL . '/login.php?url=' . urlencode(G5_PLUGIN_URL . '/gb_guardian/install.php');
+    echo '<p>관리자만 접근 가능합니다. <a href="' . htmlspecialchars($login_url, ENT_QUOTES, 'UTF-8')
+        . '">관리자 계정으로 로그인</a>한 뒤 설치를 다시 실행해주세요.</p>';
+    exit;
 }
 
 $msg = array();
@@ -37,6 +43,7 @@ $charset = !empty($g5['db_charset']) ? $g5['db_charset'] : 'utf8';
 
 // 운영지킴이 테이블명 (extend 미적재 환경에서도 install.php 단독 실행 가능)
 $tbl_log             = G5_TABLE_PREFIX . 'guardian_log';
+$tbl_occurrence      = G5_TABLE_PREFIX . 'guardian_occurrence';
 $tbl_rule            = G5_TABLE_PREFIX . 'guardian_rule';
 $tbl_recipient       = G5_TABLE_PREFIX . 'guardian_recipient';
 $tbl_notify_log      = G5_TABLE_PREFIX . 'guardian_notify_log';
@@ -132,6 +139,7 @@ CREATE TABLE IF NOT EXISTS `{$tbl_notify_log}` (
   `sent_dt`       DATETIME            NOT NULL,
   PRIMARY KEY (`notify_id`),
   KEY `idx_rule_sent` (`rule_id`, `sent_dt`),
+  KEY `idx_channel_sent` (`channel`, `sent_dt`),
   KEY `idx_hash`      (`error_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET={$charset}
 ";
@@ -181,8 +189,25 @@ CREATE TABLE IF NOT EXISTS `{$tbl_guardian_config}` (
 ) ENGINE=InnoDB DEFAULT CHARSET={$charset}
 ";
 
+// 오류 그룹에 속한 발생별 참조. 본문/응답은 호출자가 사용하는 게시판에만 보관한다.
+$sql_occurrence = "
+CREATE TABLE IF NOT EXISTS `{$tbl_occurrence}` (
+  `occurrence_id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `log_id`        BIGINT(20) UNSIGNED NOT NULL,
+  `wr_id`         BIGINT(20) UNSIGNED NOT NULL,
+  `bo_table`      VARCHAR(50) NOT NULL DEFAULT '',
+  `source`        VARCHAR(64) NOT NULL DEFAULT '',
+  `failure`       VARCHAR(64) NOT NULL DEFAULT '',
+  `occurred_dt`   DATETIME NOT NULL,
+  PRIMARY KEY (`occurrence_id`),
+  KEY `idx_log_occurrence` (`log_id`, `occurrence_id`),
+  KEY `idx_occurred` (`occurred_dt`)
+) ENGINE=InnoDB DEFAULT CHARSET={$charset}
+";
+
 $tables = array(
     $tbl_log             => $sql_log,
+    $tbl_occurrence      => $sql_occurrence,
     $tbl_rule            => $sql_rule,
     $tbl_recipient       => $sql_recipient,
     $tbl_notify_log      => $sql_notify_log,
@@ -204,6 +229,40 @@ foreach ($tables as $tname => $sql) {
 // ---------------------------------------------------------------------
 // 2.5 마이그레이션 — 죽은 컬럼 제거 (재실행 안전)
 // ---------------------------------------------------------------------
+
+// 기존 설치에도 일일 발송량 조회용 인덱스를 추가한다.
+// 이름이 달라도 (channel, sent_dt)로 시작하는 전체 컬럼 인덱스가 있으면 유지한다.
+$notify_indexes = @sql_query(" SHOW INDEX FROM `{$tbl_notify_log}` ", false);
+if (!$notify_indexes) {
+    $msg[] = '[FAIL] 발송 이력 인덱스 조회 실패 — DB 권한을 확인하세요';
+} else {
+    $notify_index_columns = array();
+    while ($notify_index = sql_fetch_array($notify_indexes)) {
+        $notify_index_columns[$notify_index['Key_name']][(int)$notify_index['Seq_in_index']] = array(
+            $notify_index['Column_name'], $notify_index['Sub_part']);
+    }
+    if (function_exists('sql_free_result')) sql_free_result($notify_indexes);
+    $has_channel_sent_index = false;
+    foreach ($notify_index_columns as $columns) {
+        if (isset($columns[1], $columns[2])
+            && $columns[1][0] === 'channel' && $columns[2][0] === 'sent_dt'
+            && $columns[1][1] === null && $columns[2][1] === null) {
+            $has_channel_sent_index = true;
+            break;
+        }
+    }
+    if ($has_channel_sent_index) {
+        $msg[] = '[SKIP] 발송 이력 channel/sent_dt 인덱스 이미 있음';
+    } elseif (isset($notify_index_columns['idx_channel_sent'])) {
+        $msg[] = '[FAIL] idx_channel_sent 이름의 다른 인덱스가 있습니다 — DB 인덱스를 확인하세요';
+    } elseif (@sql_query(" ALTER TABLE `{$tbl_notify_log}` ADD INDEX `idx_channel_sent` (`channel`, `sent_dt`) ", false)) {
+        $msg[] = '[MIGRATE] 발송 이력 channel/sent_dt 인덱스 추가 완료';
+    } else {
+        $msg[] = '[FAIL] 발송 이력 인덱스 추가 실패 — DB 권한을 확인하세요';
+    }
+}
+
+// --- 발송 이력 인덱스 마이그레이션 끝 ---
 
 // (a) guardian_recipient.kakao_id : 알리고 알림톡은 휴대폰 번호 기반이라
 //     별도 카카오 ID 가 필요 없어 제거한다.
@@ -376,6 +435,17 @@ $msg[] = "PHP 버전: " . PHP_VERSION;
 $msg[] = "그누보드 버전: " . (defined('G5_GNUBOARD_VER') ? G5_GNUBOARD_VER : 'unknown');
 $msg[] = "DB 캐릭터셋: " . $charset;
 $msg[] = "테이블 접두사: " . G5_TABLE_PREFIX;
+// 동시 요청 보호에 필요한 DB 이름 잠금 사용 가능 여부를 실제로 확인한다.
+$lock_probe = 'gbg-install-' . substr(hash('sha256', $tbl_log . uniqid('', true)), 0, 48);
+$lock_check = sql_fetch(" SELECT GET_LOCK('{$lock_probe}', 0) AS acquired ", false);
+if (isset($lock_check['acquired']) && (int)$lock_check['acquired'] === 1) {
+    $lock_release = sql_fetch(" SELECT RELEASE_LOCK('{$lock_probe}') AS released ", false);
+    $msg[] = isset($lock_release['released']) && (int)$lock_release['released'] === 1
+        ? '[OK] DB 동시 요청 잠금(GET_LOCK / RELEASE_LOCK) 사용 가능'
+        : '[FAIL] DB 동시 요청 잠금 해제 실패 — DB 환경을 확인하세요';
+} else {
+    $msg[] = '[FAIL] DB 동시 요청 잠금 사용 불가 — 오류 수집/알림은 보호 없이 실행되지 않습니다';
+}
 $msg[] = "mbstring 확장: " . (extension_loaded('mbstring')
     ? '[OK] 로드됨'
     : '[WARN] 미설치 — 한글 메시지 길이 제한이 정상 동작하지 않을 수 있음');

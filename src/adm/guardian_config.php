@@ -191,6 +191,8 @@ details[open] > summary .guardian-toggle-icon::after{content:"▲ 접기";font-s
                 정리 시점은 별도 cron 이 아닌 <strong>요약 cron 또는 방문자 트리거</strong> 가 동작할 때 함께 실행됩니다 (위 "요약 발송 트리거 모드" 설정과 동일).<br>
                 <span style="color:#c63;">⚠️ 미해결 (resolved=0) 로그는 보관 기간이 지나도 자동 삭제되지 않습니다.</span>
                 오류 처리 후 로그 화면에서 "해결됨 토글" 을 눌러주셔야 정리 대상이 됩니다.
+                <br>발생 상세(wr_id 및 게시판 로그 참조)는 해결 여부와 관계없이 발생 시각부터 본 기간만 보관합니다.
+                그룹 삭제 시 상세 내역도 정리하며, 참조한 게시판의 요청·응답 자료는 삭제하지 않습니다.
             </p>
         </td>
     </tr>
@@ -450,7 +452,8 @@ details[open] > summary .guardian-toggle-icon::after{content:"▲ 접기";font-s
                 매칭 추적 로그 / 처리된 요약 큐의 자동 삭제 기준 (기본 7일).
                 cron 또는 방문자 트리거가 동작할 때마다 본 기간을 지난 데이터를 자동 삭제합니다.
                 짧을수록 DB 사용량이 작고, 길수록 디버깅 가능 기간이 길어집니다.
-                <br>※ 해결됨 처리된 오류 로그는 별도 항목 <code>cf_guardian_log_keep_days</code>(기본 30일) 기준으로 정리됩니다.
+                <br>※ 해결됨 처리된 오류 그룹과 발생 상세는 별도 항목 <code>cf_guardian_log_keep_days</code>(기본 30일) 기준으로 정리됩니다.
+                발생 상세는 미해결 그룹에서도 기간이 지나면 삭제하며, 그룹의 누적 횟수와 참조한 게시판 자료는 유지합니다.
             </p>
         </td>
     </tr>

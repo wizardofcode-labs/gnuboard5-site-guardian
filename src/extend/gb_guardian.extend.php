@@ -37,12 +37,16 @@ if (!defined('GUARDIAN_VERSION')) {
     define('GUARDIAN_URL',      G5_PLUGIN_URL  . '/gb_guardian');
 }
 $g5['guardian_log_table']             = G5_TABLE_PREFIX . 'guardian_log';
+$g5['guardian_occurrence_table']      = G5_TABLE_PREFIX . 'guardian_occurrence';
 $g5['guardian_rule_table']            = G5_TABLE_PREFIX . 'guardian_rule';
 $g5['guardian_recipient_table']       = G5_TABLE_PREFIX . 'guardian_recipient';
 $g5['guardian_notify_log_table']      = G5_TABLE_PREFIX . 'guardian_notify_log';
 $g5['guardian_summary_queue_table']   = G5_TABLE_PREFIX . 'guardian_summary_queue';
 $g5['guardian_rule_match_log_table']  = G5_TABLE_PREFIX . 'guardian_rule_match_log';
 $g5['guardian_config_table']          = G5_TABLE_PREFIX . 'guardian_config';
+
+// 공용 보고 API는 미설치/비활성 상태에서도 PHP 로그를 기록할 수 있어야 한다.
+require_once GUARDIAN_LIB_PATH . '/guardian_report.lib.php';
 
 // =====================================================================
 // 2. guardian_config 호환 레이어 (cf_guardian_* 키 주입)

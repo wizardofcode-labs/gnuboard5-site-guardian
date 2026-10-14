@@ -246,7 +246,7 @@ function guardian_on_sql_error($sql, $error_msg)
  *   8. run_event('guardian_after_capture', $data) — 알림 트리거 자리
  *
  * @param  array $data 핸들러가 채워서 보낸 부분 데이터
- * @return void
+ * @return int 저장한 오류 그룹 ID. 그룹 또는 발생 상세 기록에 실패했으면 0.
  */
 function guardian_capture(array $data)
 {
@@ -255,9 +255,13 @@ function guardian_capture(array $data)
     // guardian_capture 로 돌아오는 무한 루프를 차단한다.
     static $in_progress = false;
     if ($in_progress) {
-        return;
+        return 0;
     }
     $in_progress = true;
+    $capture_started = guardian_timing_start();
+    $log_id = 0;
+    $group_lock = '';
+    $occurrence_saved = true;
 
     try {
         // ---- 2. 데이터 정규화 ----
@@ -274,6 +278,29 @@ function guardian_capture(array $data)
         );
         $data = array_merge($defaults, $data);
 
+        // 공용 API의 구조화 데이터만 발생별 게시판 참조로 사용한다.
+        $occurrence = null;
+        if (!empty($data['error_code']) && isset($data['context']) && is_array($data['context'])) {
+            $context = guardian_report_context($data['context']);
+            $data['context'] = $context;
+            $data['message'] = '[' . $data['error_code'] . '] ' . $data['message']
+                . ' source=' . $context['source'] . ' failure=' . $context['failure'];
+            if ($context['wr_id'] > 0 && $context['bo_table'] !== '') {
+                if (guardian_db_occurrence_ready()) {
+                    $occurrence = $context;
+                } else {
+                    // 설치 전에는 기존 방식처럼 모든 wr_id를 그룹 메시지에도 보존.
+                    $data['message'] .= ' wr_id=' . $context['wr_id'] . ' bo_table=' . $context['bo_table'];
+                    unset($data['error_code']);
+                    $occurrence_saved = false;
+                }
+            }
+        }
+
+        if (empty($data['timing_reported'])) {
+            guardian_timing_note_error(isset($data['error_code']) ? $data['error_code'] : 'php_error',
+                isset($data['context']) && is_array($data['context']) ? $data['context'] : array());
+        }
         // ---- 3. 마스킹 ----
         $data['message'] = guardian_mask_pii((string)$data['message']);
         $data['trace']   = guardian_mask_pii((string)$data['trace']);
@@ -288,7 +315,8 @@ function guardian_capture(array $data)
 
         // ---- 5. 해시 생성 (그룹화 키) ----
         //
-        // 그룹화 정책: level + message + file (★ line 제외)
+        // 일반 PHP 오류: level + message + file (★ line 제외)
+        // 구조화 보고: level + error_code + file + source + failure
         //
         // line 을 해시에 포함하면 같은 변수가 인접한 4개 라인에서 사용된 경우
         // (Undefined variable $X 가 line 162, 163, 164, 167) 4건이 각각
@@ -299,25 +327,44 @@ function guardian_capture(array $data)
         // line 값 자체는 캡처된 첫 행에 그대로 저장되며, occurrence_count
         // 만 누적 증가한다. 관리자는 admin 로그 화면에서 해당 행을 통해
         // 첫 발생 라인을 확인할 수 있다.
-        $data['error_hash'] = hash(
-            'sha256',
-            $data['level'] . '|' . $data['message'] . '|' . $data['file']
-        );
+        // 명시적 식별자가 있으면 설명 문구는 해시에서 제외한다.
+        $group_key = !empty($data['error_code'])
+            ? json_encode(array($data['level'], $data['error_code'], $data['file'],
+                $data['context']['source'], $data['context']['failure']))
+            : $data['level'] . '|' . $data['message'] . '|' . $data['file'];
+        $data['error_hash'] = hash('sha256', $group_key);
+
+        // 서로 다른 PHP 요청도 같은 해시의 조회/생성/횟수/상세 기록을 직렬화한다.
+        // 잠금을 얻지 못하면 보호 없이 기록하거나 알림을 보내지 않는다.
+        $group_lock = guardian_db_acquire_named_lock('capture', array($data['error_hash']));
+        if ($group_lock === '') {
+            @error_log('[GB Guardian] 오류 그룹 잠금 획득 실패 hash=' . $data['error_hash']);
+            return 0;
+        }
 
         // ---- 6/7. 디바운싱 또는 INSERT ----
         // INSERT 시 새 log_id 를, 디바운싱 시 기존 최신 log_id 를 받아
         // $data 에 채운다. 이렇게 해야 디스패처의 매칭 추적 로그 /
         // 요약 큐 / notified 플래그 갱신 등이 정확한 log_id 를 참조한다.
-        $log_id = 0;
-        if (guardian_db_is_in_cooldown($data['error_hash'])) {
-            guardian_db_increment_count($data['error_hash']);
-            if (function_exists('guardian_db_get_latest_log_id')) {
-                $log_id = guardian_db_get_latest_log_id($data['error_hash']);
-            }
+        $log_id = guardian_db_get_cooldown_log_id($data['error_hash']);
+        if ($log_id > 0) {
+            guardian_db_increment_count($data['error_hash'], $log_id);
         } else {
             $log_id = (int)guardian_db_insert($data);
         }
         $data['log_id'] = $log_id;
+        if ($occurrence !== null && $log_id > 0) {
+            $occurrence_saved = guardian_db_insert_occurrence($log_id, $occurrence);
+            if (!$occurrence_saved) {
+                // 그룹과 알림은 유지하고, 저장하지 못한 참조를 PHP 로그에 명시한다.
+                @error_log('[GB Guardian] 발생 상세 저장 실패 log_id=' . $log_id
+                    . ' context=' . json_encode(guardian_report_context($occurrence)));
+            }
+        }
+        guardian_db_release_named_lock($group_lock);
+        $group_lock = '';
+        // DB 저장 실패는 PHP 로그에만 남긴다. 잘못된 그룹 ID로 발송하지 않는다.
+        if ($log_id <= 0) return 0;
 
         // ---- 8. 외부 확장점 (알림 규칙 매칭) ----
         // 그누보드 5.6.x 의 훅 트리거 함수는 run_event() 다 (do_action 은 워드프레스).
@@ -328,10 +375,12 @@ function guardian_capture(array $data)
         }
     } catch (Exception $e) {
         // 의도적 무시 — 캡처 도중 오류는 사이트에 영향 주지 않는다
+    } catch (Throwable $e) {
+        // PHP 7+ 엔진 오류에서도 재진입 가드를 해제한다.
+    } finally {
+        guardian_db_release_named_lock($group_lock);
+        $in_progress = false;
+        guardian_timing_add('capture_ms', $capture_started);
     }
-
-    // try 블록 내에서 throw 가 catch 를 빠져나가도 in_progress 가
-    // 풀리도록 보장. PHP 5.5+ 의 finally 를 쓰면 더 명확하지만
-    // 현재 catch 블록이 모두 흡수하므로 이 위치도 안전하다.
-    $in_progress = false;
+    return $occurrence_saved ? $log_id : 0;
 }

@@ -114,7 +114,8 @@ function guardian_check_daily_limit($channel)
         " SELECT COUNT(*) AS cnt
           FROM `{$g5['guardian_notify_log_table']}`
           WHERE channel = '" . sql_escape_string($channel) . "'
-            AND DATE(sent_dt) = CURDATE() ",
+            AND sent_dt >= CURDATE()
+            AND sent_dt < DATE_ADD(CURDATE(), INTERVAL 1 DAY) ",
         false
     );
     $today = !empty($row['cnt']) ? (int)$row['cnt'] : 0;
@@ -136,7 +137,8 @@ function guardian_today_sent_count($channel)
         " SELECT COUNT(*) AS cnt
           FROM `{$g5['guardian_notify_log_table']}`
           WHERE channel = '" . sql_escape_string($channel) . "'
-            AND DATE(sent_dt) = CURDATE() ",
+            AND sent_dt >= CURDATE()
+            AND sent_dt < DATE_ADD(CURDATE(), INTERVAL 1 DAY) ",
         false
     );
     return !empty($row['cnt']) ? (int)$row['cnt'] : 0;
@@ -147,13 +149,13 @@ function guardian_today_sent_count($channel)
 // =====================================================================
 /**
  * 동일 (error_hash, channel, recipient_addr) 조합으로 최근 N분 내
- * 성공 발송한 이력이 있는지 확인.
+ * 성공 발송 이력 또는 아직 진행 중인 발송 예약이 있는지 확인.
  *
  * "DB 저장 디바운싱" (캡처 단계) 과는 다른 층의 보호:
  *   - 저장 디바운싱: 같은 오류 100회 발생 → log row 1개
  *   - 알림 디바운싱: 저장된 오류 1건 → 30분간 알림 1통
  *
- * status = 'success' 만 대상 — 실패한 발송은 재시도 가능하도록.
+ * success는 설정 쿨다운, pending은 10분간 보호. 확정된 failed는 재시도 가능.
  *
  * @param  string $error_hash    오류 그룹 해시
  * @param  string $channel       채널
@@ -173,9 +175,7 @@ function guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, 
     }
 
     $cooldown_min = (int)$cooldown_min;
-    if ($cooldown_min < 1) {
-        return true; // 쿨다운 0/음수 = 비활성 (테스트 발송용)
-    }
+    if ($cooldown_min < 1) $cooldown_min = 0; // 성공 이력만 비활성. 진행 중 예약은 계속 보호.
 
     $hash = sql_escape_string($error_hash);
     $ch   = sql_escape_string($channel);
@@ -187,8 +187,8 @@ function guardian_check_notify_cooldown($error_hash, $channel, $recipient_addr, 
           WHERE error_hash = '{$hash}'
             AND channel    = '{$ch}'
             AND recipient  = '{$addr}'
-            AND status     = 'success'
-            AND sent_dt > DATE_SUB(NOW(), INTERVAL {$cooldown_min} MINUTE)
+            AND ((status = 'success' AND {$cooldown_min} > 0 AND sent_dt > DATE_SUB(NOW(), INTERVAL {$cooldown_min} MINUTE))
+                 OR (status = 'pending' AND sent_dt > DATE_SUB(NOW(), INTERVAL 10 MINUTE)))
           LIMIT 1 ",
         false
     );

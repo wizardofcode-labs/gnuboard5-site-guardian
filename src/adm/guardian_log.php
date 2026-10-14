@@ -283,6 +283,16 @@ if ($row_count === 0) {
         </tbody>
         </table>
 
+        <h3 style="margin:20px 0 10px;">오류 발생 내역</h3>
+        <p id="m_occurrence_status" style="color:#666;"></p>
+        <div style="overflow-x:auto;">
+            <table class="tbl_row01" style="width:100%;">
+                <thead><tr><th>발생 시각</th><th>wr_id / 게시판 로그</th><th>source</th><th>failure</th></tr></thead>
+                <tbody id="m_occurrences"></tbody>
+            </table>
+        </div>
+        <button type="button" id="m_occurrence_more" class="btn btn_02" style="display:none; margin-top:10px;">이전 발생 내역 더 보기</button>
+
         <div style="text-align:right; margin-top:20px;">
             <button type="button" onclick="guardianSingleAction('toggle_resolve')" id="btn_resolve" class="btn btn_02">해결됨 토글</button>
             <button type="button" onclick="guardianSingleAction('delete')" class="btn" style="background:#d32f2f;color:#fff;">삭제</button>
@@ -332,11 +342,21 @@ if ($row_count === 0) {
         document.forms['flist'].submit();
     };
 
-    window.showGuardianLog = function (log_id) {
-        fetch('./guardian_log_view.php?log_id=' + encodeURIComponent(log_id))
+    var occurrenceCursor = 0;
+    var detailRequest = 0;
+    window.showGuardianLog = function (log_id, before_id) {
+        var requestId = ++detailRequest;
+        var append = before_id > 0;
+        document.getElementById('m_occurrence_more').disabled = true;
+        fetch('./guardian_log_view.php?log_id=' + encodeURIComponent(log_id) + '&before_id=' + encodeURIComponent(before_id || 0))
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data.error) { alert(data.error); return; }
+                if (requestId !== detailRequest) return;
+                if (data.error) {
+                    document.getElementById('m_occurrence_more').disabled = false;
+                    alert(data.error);
+                    return;
+                }
                 document.getElementById('m_level').innerHTML = data.level_badge || data.error_level || '';
                 document.getElementById('m_message').textContent = data.error_message || '';
                 document.getElementById('m_file').textContent = (data.error_file || '') + ':' + (data.error_line || 0);
@@ -348,14 +368,51 @@ if ($row_count === 0) {
                 document.getElementById('m_last').textContent = data.last_occurred_dt || data.created_dt || '-';
                 document.getElementById('m_resolved').textContent = (data.resolved == 1) ? '✅ 해결' : '⏳ 미해결';
                 document.getElementById('m_trace').textContent = data.error_trace || '(스택 트레이스 없음)';
+                var page = data.occurrences || { available: false, items: [] };
+                var body = document.getElementById('m_occurrences');
+                if (!append) body.textContent = '';
+                (page.items || []).forEach(function (item) {
+                    var tr = document.createElement('tr');
+                    [item.occurred_dt, item.wr_id, item.source, item.failure].forEach(function (value, index) {
+                        var td = document.createElement('td');
+                        if (index === 1 && item.log_url) {
+                            var a = document.createElement('a');
+                            a.href = item.log_url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.textContent = String(value) + ' · 게시판 로그 보기';
+                            td.appendChild(a);
+                        } else {
+                            td.textContent = String(value || '-');
+                        }
+                        tr.appendChild(td);
+                    });
+                    body.appendChild(tr);
+                });
+                document.getElementById('m_occurrence_status').textContent = !page.available
+                    ? '발생 상세 테이블이 없습니다. 운영지킴이 install.php 업그레이드를 실행해주세요.'
+                    : (body.children.length === 0 ? '보관 중인 발생 상세가 없습니다. 업그레이드 전 로그이거나 보관기간이 지났을 수 있습니다.'
+                    : '최근 발생부터 50건씩 표시합니다. 상세 보관기간이 지나면 누적 횟수보다 표시 내역이 적을 수 있습니다.');
+                occurrenceCursor = page.next_before_id || 0;
+                document.getElementById('m_occurrence_more').style.display = occurrenceCursor ? 'inline-block' : 'none';
+                document.getElementById('m_occurrence_more').disabled = false;
                 document.getElementById('btn_resolve').textContent = (data.resolved == 1) ? '미해결로 변경' : '해결됨 표시';
                 window._guardianCurrentLogId = parseInt(data.log_id, 10) || 0;
                 document.getElementById('guardian_modal').style.display = 'block';
             })
-            .catch(function (e) { alert('조회 실패: ' + e.message); });
+            .catch(function (e) {
+                if (requestId !== detailRequest) return;
+                document.getElementById('m_occurrence_more').disabled = false;
+                alert('조회 실패: ' + e.message);
+            });
     };
 
+    document.getElementById('m_occurrence_more').addEventListener('click', function () {
+        if (window._guardianCurrentLogId && occurrenceCursor) showGuardianLog(window._guardianCurrentLogId, occurrenceCursor);
+    });
+
     window.closeGuardianModal = function () {
+        ++detailRequest;
         document.getElementById('guardian_modal').style.display = 'none';
         window._guardianCurrentLogId = 0;
     };

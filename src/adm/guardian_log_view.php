@@ -23,8 +23,10 @@ auth_check_menu($auth, $sub_menu, 'r');
 
 if (defined('GUARDIAN_LIB_PATH')) {
     include_once(GUARDIAN_LIB_PATH . '/guardian_admin.lib.php');
+    include_once(GUARDIAN_LIB_PATH . '/guardian_db.lib.php');
 } else {
     include_once(G5_PLUGIN_PATH . '/gb_guardian/lib/guardian_admin.lib.php');
+    include_once(G5_PLUGIN_PATH . '/gb_guardian/lib/guardian_db.lib.php');
 }
 
 header('Content-Type: application/json; charset=utf-8');
@@ -70,6 +72,7 @@ $payload = array(
     'resolved'         => (int)$row['resolved'],
     'notified'         => (int)$row['notified'],
     'level_badge'      => guardian_level_badge($row['error_level']),
+    'occurrences'      => guardian_db_get_occurrences($log_id, isset($_GET['before_id']) ? max(0, (int)$_GET['before_id']) : 0),
 );
 
 echo json_encode($payload, JSON_UNESCAPED_UNICODE);

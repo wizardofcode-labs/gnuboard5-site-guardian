@@ -584,6 +584,7 @@ function guardian_render_summary_template($template_file, array $data)
  * - 미처리 큐: 30일 이상 → 강제 삭제 (방치 방지)
  * - 매칭 로그: cf_guardian_rule_match_keep_days 기준 (기본 7일)
  * - 해결된 오류 로그: cf_guardian_log_keep_days 기준 (기본 30일)
+ * - 발생 상세: 해결 여부와 관계없이 같은 보관 기간, 부모 없는 행도 정리
  *
  * @return void
  */
@@ -626,5 +627,76 @@ function guardian_cleanup_old_data()
                 AND created_dt < DATE_SUB(NOW(), INTERVAL " . $log_keep . " DAY) ",
             false
         );
+    }
+
+    // 4. 상세 내역은 미해결 그룹에서도 무한 증가하지 않도록 기간을 제한한다.
+    // 삭제된 그룹의 고아 참조도 제거. 방문자 트리거 지연을 줄이기 위해 1회 1000건.
+    // 참조한 게시판의 요청/응답 자료는 삭제하지 않는다.
+    if (!empty($g5['guardian_log_table']) && guardian_db_occurrence_ready()) {
+        $detail_keep = isset($config['cf_guardian_log_keep_days']) && $config['cf_guardian_log_keep_days'] !== ''
+            ? max(1, (int)$config['cf_guardian_log_keep_days']) : 30;
+        @sql_query(
+            " DELETE FROM `{$g5['guardian_occurrence_table']}`
+              WHERE occurred_dt < DATE_SUB(NOW(), INTERVAL {$detail_keep} DAY)
+              ORDER BY occurred_dt ASC LIMIT 1000 ", false
+        );
+        guardian_cleanup_orphan_occurrences();
+    }
+}
+
+/**
+ * 기본키 순서로 최대 1000행만 검사하고 진행 위치를 기존 설정 테이블에 저장한다.
+ * 한 순회의 상한 ID를 고정해 신규 상세가 계속 추가돼도 처음으로 돌아와 재검사한다.
+ * 동시 정리는 기다리지 않고 건너뛰며, 삭제/설정 저장 실패 시 진행 위치를 유지한다.
+ */
+function guardian_cleanup_orphan_occurrences($batch_size = 1000)
+{
+    global $g5;
+    if (empty($g5['guardian_log_table']) || empty($g5['guardian_config_table'])
+        || !function_exists('guardian_config_set')
+        || !guardian_db_occurrence_ready()) return false;
+    $lock = guardian_db_acquire_named_lock('occurrence_cleanup', array(), 0);
+    if ($lock === '') return false;
+    try {
+        $batch_size = max(1, min(1000, (int)$batch_size));
+        $key = '_occurrence_orphan_scan';
+        // 요청 시작 때의 설정 캐시 대신, 잠금 획득 후 최신 진행 위치를 읽는다.
+        $state_result = @sql_query(" SELECT cfg_value FROM `{$g5['guardian_config_table']}`
+            WHERE cfg_key = '{$key}' ", false);
+        if (!$state_result) return false;
+        $state_row = sql_fetch_array($state_result);
+        if (function_exists('sql_free_result')) sql_free_result($state_result);
+        $state = isset($state_row['cfg_value']) ? json_decode($state_row['cfg_value'], true) : array();
+        $cursor = is_array($state) && isset($state['cursor']) ? max(0, (int)$state['cursor']) : 0;
+        $upper = is_array($state) && isset($state['upper']) ? max(0, (int)$state['upper']) : 0;
+        if ($upper <= $cursor) {
+            $row = sql_fetch(" SELECT MAX(occurrence_id) AS upper_id FROM `{$g5['guardian_occurrence_table']}` ", false);
+            if (!array_key_exists('upper_id', $row)) return false;
+            $cursor = 0;
+            $upper = (int)$row['upper_id'];
+        }
+        $result = @sql_query(" SELECT occurrence_id FROM `{$g5['guardian_occurrence_table']}` FORCE INDEX (PRIMARY)
+            WHERE occurrence_id > {$cursor} AND occurrence_id <= {$upper}
+            ORDER BY occurrence_id ASC LIMIT {$batch_size} ", false);
+        if (!$result) return false;
+        $ids = array();
+        while ($row = sql_fetch_array($result)) $ids[] = (int)$row['occurrence_id'];
+        if (function_exists('sql_free_result')) sql_free_result($result);
+        if (!empty($ids)) {
+            $ids_str = implode(',', $ids);
+            if (!@sql_query(" DELETE o FROM `{$g5['guardian_occurrence_table']}` o FORCE INDEX (PRIMARY)
+                LEFT JOIN `{$g5['guardian_log_table']}` l ON l.log_id = o.log_id
+                WHERE o.occurrence_id IN ({$ids_str}) AND l.log_id IS NULL ", false)) return false;
+            $cursor = end($ids);
+        }
+        $next = empty($ids) || $cursor >= $upper
+            ? array('cursor' => 0, 'upper' => 0) : array('cursor' => $cursor, 'upper' => $upper);
+        return guardian_config_set($key, $next, 'json');
+    } catch (Exception $e) {
+        return false;
+    } catch (Throwable $e) {
+        return false;
+    } finally {
+        guardian_db_release_named_lock($lock);
     }
 }

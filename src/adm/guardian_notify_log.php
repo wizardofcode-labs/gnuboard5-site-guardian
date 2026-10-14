@@ -34,7 +34,7 @@ $f_channel = isset($_GET['channel']) ? (string)$_GET['channel'] : '';
 if (!in_array($f_channel, array('', 'email', 'sms', 'kakao'), true)) $f_channel = '';
 
 $f_status = isset($_GET['status']) ? (string)$_GET['status'] : '';
-if (!in_array($f_status, array('', 'success', 'failed'), true)) $f_status = '';
+if (!in_array($f_status, array('', 'success', 'failed', 'pending', 'unknown'), true)) $f_status = '';
 
 $f_period = isset($_GET['period']) ? (int)$_GET['period'] : 7;
 if (!in_array($f_period, array(0, 1, 7, 30, 90), true)) $f_period = 7;
@@ -53,7 +53,11 @@ $where = array('1=1');
 if ($f_channel !== '') {
     $where[] = "channel = '" . sql_escape_string($f_channel) . "'";
 }
-if ($f_status !== '') {
+if ($f_status === 'pending') {
+    $where[] = "status = 'pending' AND sent_dt > DATE_SUB(NOW(), INTERVAL 10 MINUTE)";
+} elseif ($f_status === 'unknown') {
+    $where[] = "(status = 'unknown' OR (status = 'pending' AND sent_dt <= DATE_SUB(NOW(), INTERVAL 10 MINUTE)))";
+} elseif ($f_status !== '') {
     $where[] = "status = '" . sql_escape_string($f_status) . "'";
 }
 if ($f_period > 0) {
@@ -85,7 +89,11 @@ $from = ($page - 1) * $rows;
 //      guardian_log 에서 일괄 조회 (페이지당 최대 30건이라 부담 없음)
 $result = @sql_query(
     " SELECT n.notify_id, n.rule_id, n.error_hash, n.channel, n.recipient,
-             n.status, n.fail_reason, n.sent_dt,
+             n.status, n.sent_dt,
+             CASE WHEN n.status = 'pending' AND n.sent_dt <= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+                  THEN 'unknown' ELSE n.status END AS display_status,
+             CASE WHEN n.status = 'pending' AND n.sent_dt <= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+                  THEN '발송 예약 10분 만료: 결과 미확인' ELSE n.fail_reason END AS fail_reason,
              r.rule_name AS rule_name
       FROM `{$g5['guardian_notify_log_table']}` n
       LEFT JOIN `{$g5['guardian_rule_table']}` r ON r.rule_id = n.rule_id
@@ -205,6 +213,8 @@ include_once(G5_ADMIN_PATH . '/admin.head.php');
         <option value=""<?php if ($f_status === '') echo ' selected'; ?>>전체 상태</option>
         <option value="success"<?php if ($f_status === 'success') echo ' selected'; ?>>성공</option>
         <option value="failed" <?php if ($f_status === 'failed')  echo ' selected'; ?>>실패</option>
+        <option value="pending"<?php if ($f_status === 'pending') echo ' selected'; ?>>예약/진행 중</option>
+        <option value="unknown"<?php if ($f_status === 'unknown') echo ' selected'; ?>>결과 미확인</option>
     </select>
     <select name="period">
         <?php
@@ -332,6 +342,10 @@ foreach ($rows_data as $row) {
     <td style="text-align:center;">
         <?php if ($is_ok) { ?>
             <span style="color:#2e7d32;font-weight:bold;">✓ 성공</span>
+        <?php } elseif ($row['display_status'] === 'pending') { ?>
+            <span style="color:#b7791f;font-weight:bold;">⏳ 예약/진행 중</span>
+        <?php } elseif ($row['display_status'] === 'unknown') { ?>
+            <span style="color:#666;font-weight:bold;">? 결과 미확인</span>
         <?php } else { ?>
             <span style="color:#c33;font-weight:bold;">✗ 실패</span>
         <?php } ?>

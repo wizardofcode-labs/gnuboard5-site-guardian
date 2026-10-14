@@ -322,6 +322,7 @@ function guardian_apply_rule_instant(array $rule, array $error_data, array $reci
         $result = guardian_notify($error_data, $channel, $recipient_id, array(
             'cooldown_min' => $cooldown,
             'rule_id'      => $rule_id,
+            'dedup_scope'  => $dedup,
         ));
 
         if (!empty($result['success'])) {
@@ -370,8 +371,8 @@ function guardian_apply_rule_summary(array $rule, array $error_data)
 // 5. 글로벌 중복 제거
 // =====================================================================
 /**
- * 어떤 규칙이든 같은 (error_hash + 수신자) 조합으로 최근 N분 내 성공 발송한
- * 이력이 있는지. dedup_scope='global' 일 때만 사용.
+ * 어떤 규칙이든 같은 (error_hash + 수신자) 조합의 성공 이력 또는 진행 중 예약이
+ * 있는지. dedup_scope='global' 일 때만 사용. 예약 시 DB 잠금 안에서도 재검사한다.
  *
  * @param  string $error_hash
  * @param  int    $recipient_id
@@ -397,8 +398,8 @@ function guardian_is_global_dedup_blocked($error_hash, $recipient_id, $cooldown_
                   ON r.recipient_id = " . $rid . "
                  AND (n.recipient = r.email OR n.recipient = r.mobile)
           WHERE n.error_hash = '{$hash}'
-            AND n.status     = 'success'
-            AND n.sent_dt > DATE_SUB(NOW(), INTERVAL {$min} MINUTE)
+            AND ((n.status = 'success' AND n.sent_dt > DATE_SUB(NOW(), INTERVAL {$min} MINUTE))
+                 OR (n.status = 'pending' AND n.sent_dt > DATE_SUB(NOW(), INTERVAL 10 MINUTE)))
           LIMIT 1 ",
         false
     );

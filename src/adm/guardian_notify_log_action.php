@@ -48,7 +48,7 @@ function guardian_notify_log_redirect_url($message)
         $qs['channel'] = (string)$_POST['r_channel'];
     }
     // status
-    if (isset($_POST['r_status']) && in_array((string)$_POST['r_status'], array('success', 'failed'), true)) {
+    if (isset($_POST['r_status']) && in_array((string)$_POST['r_status'], array('success', 'failed', 'pending', 'unknown'), true)) {
         $qs['status'] = (string)$_POST['r_status'];
     }
     // period
@@ -105,10 +105,11 @@ $count   = count($ids);
 if ($act === 'delete') {
     @sql_query(
         " DELETE FROM `{$g5['guardian_notify_log_table']}`
-          WHERE notify_id IN ({$ids_str}) ",
+          WHERE notify_id IN ({$ids_str})
+            AND (status <> 'pending' OR sent_dt <= DATE_SUB(NOW(), INTERVAL 10 MINUTE)) ",
         false
     );
-    goto_url(guardian_notify_log_redirect_url($count . '건의 발송 이력을 삭제했습니다.'));
+    goto_url(guardian_notify_log_redirect_url($count . '건의 발송 이력 삭제를 처리했습니다. 진행 중인 예약은 보호하여 제외했습니다.'));
 }
 
 alert('처리할 작업이 없습니다.');

@@ -796,6 +796,8 @@ ul.doc-list li::marker { color: var(--accent); }
         <thead><tr><th>테이블명 (기본 prefix: g5_)</th><th>용도</th></tr></thead>
         <tbody>
           <tr><td><code>g5_guardian_log</code></td><td>오류 로그 (등급/메시지/파일/라인/스택트레이스 + 발생 횟수 누적)</td></tr>
+          <tr><td><code>g5_guardian_occurrence</code></td><td>발생별 게시판 참조 (글 ID / source / failure / 발생 시각)</td></tr>
+          <tr><td><code>g5_guardian_config</code></td><td>운영지킴이 전용 설정 (기존 기본값 유지)</td></tr>
           <tr><td><code>g5_guardian_rule</code></td><td>알림 규칙 (등급/패턴/모드/채널/수신자 등)</td></tr>
           <tr><td><code>g5_guardian_recipient</code></td><td>수신자 (이름/이메일/휴대폰/활성 여부)</td></tr>
           <tr><td><code>g5_guardian_notify_log</code></td><td>알림 발송 이력 (성공/실패/사유)</td></tr>
@@ -804,8 +806,10 @@ ul.doc-list li::marker { color: var(--accent); }
         </tbody>
       </table>
 
-      <h3 class="sub-title">추가되는 g5_config 컬럼</h3>
-      <p>그누보드 환경설정 테이블에 <code>cf_guardian_*</code> 접두사로 환경 설정 컬럼 16개가 추가됩니다. 환경설정 화면에서 모두 GUI로 변경 가능합니다.</p>
+      <h3 class="sub-title">기존 설치 업그레이드</h3>
+      <p>v1.1 이상은 전용 <code>g5_guardian_config</code> 테이블을 사용하며 코어 설정 컬럼을 추가하지 않습니다. 기존 설정·규칙·수신자·cron 토큰을 유지합니다.</p>
+      <p>파일과 DB를 백업하고 요청 및 요약 트리거를 잠시 중지한 뒤, 공통 PHP 파일 16개를 같은 버전으로 교체하고 관리자 계정으로 <code>install.php</code>를 재실행합니다. 새 발생 상세 테이블과 발송 조회 인덱스를 자동 반영합니다. 인덱스 추가는 DB 크기에 따라 시간이 걸릴 수 있습니다.</p>
+      <p>설치 결과의 DB 잠금 <code>GET_LOCK / RELEASE_LOCK</code> 지원과 모든 <code>[FAIL]</code> 항목을 확인하세요. 잠금 실패 시 보호 없이 수집하거나 발송하지 않습니다. <code>guardian_report.lib.php</code>와 <code>guardian_timing.lib.php</code>를 모두 업로드해야 합니다. 기존 그룹은 자동 병합되지 않으며 새 그룹 키의 첫 오류는 새 알림이 될 수 있습니다.</p>
     </section>
 
 
@@ -1029,12 +1033,18 @@ ul.doc-list li::marker { color: var(--accent); }
         <li>미해결 항목 미리보기 5건 — 클릭 시 오류 로그 페이지로 이동</li>
       </ul>
 
+      <h3 class="sub-title">공용 구조화 오류 보고</h3>
+      <p>그누보드 초기화 이후 <code>guardian_report_error($error_code, $message, $context, E_USER_WARNING, __FILE__, __LINE__)</code>로 외부 서비스 오류 등을 보고할 수 있습니다. <code>source</code>와 <code>failure</code>는 그룹 분류, <code>bo_table</code>과 <code>wr_id</code>는 선택적인 게시판 참조입니다. 임의의 본문·인증정보는 컨텍스트에 저장하지 않습니다.</p>
+      <p>등급·오류 코드·파일·source·failure가 같으면 문구·줄번호·글 ID가 달라도 저장 쿨다운 내 같은 그룹입니다. API는 PHP 경고를 출력하지 않으며 비활성 상태에서도 PHP 로그를 남깁니다. <code>E_USER_ERROR</code>도 보고 등급이며 실행을 종료하지 않습니다. 기존 PHP 오류 핸들러는 계속 사용할 수 있습니다.</p>
+      <p>오류 요청은 종료 시 <code>[GB Guardian timing]</code> 로그를 한 줄 기록합니다. 전체 PHP 경과 시간, 수집·잠금·발송 시간을 확인할 수 있으며 서로 포함되는 값을 합산하지 않습니다.</p>
+
       <h3 class="sub-title" id="admin-log">② 오류 로그</h3>
       <p>캡처된 모든 오류 목록을 검색·필터링·일괄 처리할 수 있는 화면입니다.</p>
       <ul class="doc-list">
         <li>4종 필터: <strong>등급 / 기간(오늘/7일/30일/90일/전체) / 해결여부 / 메시지·파일 텍스트 검색</strong></li>
         <li>페이지당 20건 페이징, 검색·페이지 상태가 일괄 처리 후에도 유지됨</li>
         <li>행 클릭 시 AJAX 모달로 상세 정보 표시 (스택 트레이스 / 요청 URL / 사용자 IP / 발생 횟수 / 최초·최근 발생일)</li>
+        <li>구조화 보고의 발생별 게시판 참조를 최신순으로 50건씩 조회합니다. 보관기간 경과 시 표시 내역이 누적 횟수보다 적을 수 있으며, 그룹 삭제 시 상세도 정리합니다.</li>
         <li>모달에서 <strong>해결됨 토글</strong> / <strong>삭제</strong> 가능</li>
         <li>체크박스 다중 선택 후 <strong>선택 해결됨 토글</strong> / <strong>선택 삭제</strong> 일괄 처리</li>
       </ul>
@@ -1074,9 +1084,10 @@ ul.doc-list li::marker { color: var(--accent); }
       <p>실제 발송된 모든 알림의 결과 내역입니다.</p>
       <ul class="doc-list">
         <li>상단에 <strong>채널별 오늘 발송 카운트</strong> 와 <strong>일일 한도 대비 사용량</strong> 표시 (이메일 N/500 / SMS N/50 / 카톡 N/100)</li>
-        <li>각 발송 건에 채널·상태(성공/실패)·수신자·실패 사유·시각 표시</li>
+        <li>각 발송 건에 채널·상태(성공/실패/예약·진행 중/결과 미확인)·수신자·실패 사유·시각 표시</li>
         <li>채널 / 상태 / 기간 / 텍스트 검색 4종 필터</li>
-        <li>체크박스로 다중 선택 후 <strong>선택 삭제</strong> 가능</li>
+        <li>체크박스로 다중 선택 후 <strong>선택 삭제</strong> 가능. 10분 이내 진행 중 예약은 삭제에서 제외합니다.</li>
+        <li>예약은 10분간 중복 발송을 막고, 만료 시 결과 미확인으로 표시합니다. 장애 후 재시도까지 외부 전달을 정확히 한 번 보장하지는 않습니다. 예약·실패·결과 미확인도 일일 한도에 포함됩니다.</li>
       </ul>
 
       <h3 class="sub-title" id="admin-test">⑦ 테스트 발송</h3>
@@ -1092,7 +1103,7 @@ ul.doc-list li::marker { color: var(--accent); }
       <ul class="doc-list">
         <li><strong>운영지킴이 사용</strong> ON/OFF</li>
         <li><strong>수집 등급</strong> — 어떤 등급의 PHP 오류를 캡처할지 (기본: FATAL,ERROR,WARNING,EXCEPTION,DB)</li>
-        <li><strong>로그 보관 기간</strong> — 해결 처리된 오류 로그 자동 삭제 기준 (기본 30일)</li>
+        <li><strong>로그 보관 기간</strong> — 해결 처리된 오류 그룹 및 발생 상세 자동 삭제 기준 (기본 30일). 미해결 그룹은 유지하지만 발생 상세는 기간 경과 시 정리하며 게시판 원본은 유지</li>
         <li><strong>알리고 SMS 연동</strong> ON/OFF</li>
         <li><strong>비상 정지</strong> — 의심 폭주 감지 시 즉시 모든 발송 차단 (빨간 박스)</li>
         <li><strong>채널별 일일 한도</strong> — 메일/SMS/카톡 (조정 가능)</li>
@@ -1438,7 +1449,9 @@ ul.doc-list li::marker { color: var(--accent); }
       <p>그누보드 관리자 → SQL 입력창 또는 phpMyAdmin 에서 아래 SQL을 실행합니다.</p>
       <div class="code-block">
         <div class="cb-label">DB 정리 SQL</div>
-        <code><span class="ck">-- 6개 테이블 제거</span>
+        <code><span class="ck">-- 8개 테이블 제거</span>
+DROP TABLE IF EXISTS g5_guardian_occurrence;
+DROP TABLE IF EXISTS g5_guardian_config;
 DROP TABLE IF EXISTS g5_guardian_log;
 DROP TABLE IF EXISTS g5_guardian_rule;
 DROP TABLE IF EXISTS g5_guardian_recipient;
@@ -1446,7 +1459,7 @@ DROP TABLE IF EXISTS g5_guardian_notify_log;
 DROP TABLE IF EXISTS g5_guardian_summary_queue;
 DROP TABLE IF EXISTS g5_guardian_rule_match_log;
 
-<span class="ck">-- g5_config 컬럼 정리</span>
+<span class="ck">-- v1.0에서 업그레이드 후 cleanup.php를 실행하지 않은 경우에만 아래 컬럼 정리</span>
 ALTER TABLE g5_config DROP COLUMN cf_guardian_use;
 ALTER TABLE g5_config DROP COLUMN cf_guardian_collect_levels;
 ALTER TABLE g5_config DROP COLUMN cf_guardian_log_keep_days;

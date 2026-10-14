@@ -35,7 +35,8 @@ https://wizardofcode-labs.github.io/gnuboard5-site-guardian/
 - 절대 경로 마스킹 (`/var/www/...` → `[ROOT]`)
 - `@` 연산자 억제 존중 (사용자 의도 보존)
 - 운영지킴이 자체 오류 차단 (무한 루프 방지)
-- 비활성 시 디스크 I/O 0건 — **사이트 성능 영향 없음**
+- 비활성 시 자동 수집·발송은 중지됩니다. 명시적으로 호출한 구조화 보고 API는 PHP 로그만 남깁니다.
+- 구조화 오류 보고·발생 상세·동시 요청 보호 — [API 안내](src/plugin/gb_guardian/REPORT_API.md), [발생 상세 안내](src/plugin/gb_guardian/OCCURRENCES.md) 참고
 
 ### 2.2 관리자 UI
 - **대시보드** — 오늘/주간 발생 통계, 최다 오류 TOP 5, 미해결 항목 미리보기
@@ -68,6 +69,7 @@ SMS는 건당 비용이 발생하므로 **법적 안전장치 수준**으로 보
 - **야간 무음** — SMS / 카톡 발송 시간대 차단 (기본 22~08시, 메일은 정상)
 - **동일 오류 쿨다운** — 같은 오류로 같은 수신자에게 30분 내 재발송 차단
 - **재진입 락** — 발송 함수 무한 루프 차단
+- **동시 요청 보호** — DB 이름 잠금과 발송 예약으로 중복 수집·발송 방지. 예약/실패/결과 미확인도 일일 한도에 포함
 - **실패도 한도에 카운트** — 알리고 일시 장애로 실패가 폭주해도 비용 보호 무력화 안 됨
 
 ### 2.5 메일 / SMS / 카톡 발송
@@ -90,6 +92,7 @@ SMS는 건당 비용이 발생하므로 **법적 안전장치 수준**으로 보
 - 매칭 추적 로그: 기본 7일 보관 (환경설정에서 1~365일 조정)
 - 처리된 요약 큐: 7일 보관 (미처리 30일 강제 삭제)
 - **해결 처리된 오류 로그**: 30일 보관 (환경설정에서 조정) — `resolved=1` 표시된 로그만 정리됨, 미해결 로그는 보존
+- **발생 상세**: 해결 여부와 관계없이 로그 보관 기간(기본 30일) 적용. 그룹 삭제 시 상세도 삭제하며 참조한 게시판 원본은 유지
 - cron 트리거 또는 방문자 트리거가 자동 실행
 - 알림 발송 이력은 자동 정리하지 않음 — 관리자 페이지에서 수동 일괄 삭제
 
@@ -120,7 +123,9 @@ repo root
     │   │   ├── guardian_brand.lib.php              브랜드 / 푸터 / 미해결 알림 박스
     │   │   ├── guardian_chart.lib.php              대시보드 차트 데이터
     │   │   ├── guardian_config.lib.php             별도 설정 테이블 + 호환 레이어 + 마이그레이션
-    │   │   ├── guardian_db.lib.php                 마스킹 / DB I/O / 디바운싱
+    │   │   ├── guardian_db.lib.php                 마스킹 / DB I/O / 디바운싱 / 발생 상세
+    │   │   ├── guardian_report.lib.php             공용 구조화 오류 보고 API
+    │   │   ├── guardian_timing.lib.php             오류 요청·잠금·발송 시간 기록
     │   │   ├── error_handler.lib.php               4가지 핸들러 + 통합 캡처
     │   │   ├── guardian_protector.lib.php          ★ 보호 시스템 (비상정지/한도/쿨다운/락/야간무음)
     │   │   ├── guardian_template.lib.php           메일/SMS/카톡 템플릿 렌더링
@@ -174,8 +179,9 @@ https://yoursite.com/plugin/gb_guardian/install.php
 
 스크립트가 다음을 자동 수행한다.
 
-- 7개 운영지킴이 테이블 생성
+- 8개 운영지킴이 테이블 생성
   - `g5_guardian_log` — 오류 로그
+  - `g5_guardian_occurrence` — 발생별 게시판 참조
   - `g5_guardian_rule` — 알림 규칙
   - `g5_guardian_recipient` — 수신자
   - `g5_guardian_notify_log` — 알림 발송 이력
@@ -185,7 +191,10 @@ https://yoursite.com/plugin/gb_guardian/install.php
 - `g5_guardian_config` 테이블에 기본 설정값 INSERT (없는 키만, 멱등)
 - v1.0 환경에서만 기존 `g5_config.cf_guardian_*` 컬럼 → `g5_guardian_config` 마이그레이션 (자동)
 - cron 인증 토큰 자동 생성 (메일주소 prefix + 랜덤 16자 hex)
-- PHP / 확장 / DB 환경 점검 결과 출력
+- PHP / 확장 / DB 이름 잠금(GET_LOCK / RELEASE_LOCK) 환경 점검 결과 출력
+- 기존 발송 이력 테이블에도 `(channel, sent_dt)` 인덱스 자동 추가 (동등한 인덱스가 있으면 유지)
+
+기존 설치 업데이트 순서와 필수 파일 목록은 [DEPLOYMENT.md](src/plugin/gb_guardian/DEPLOYMENT.md)를 참고합니다. 인덱스 추가는 데이터량에 따라 시간이 걸릴 수 있습니다.
 
 > 💡 **v1.1+ 부터는 그누보드 `g5_config` 테이블에 컬럼을 절대 추가하지 않는다.** 신규 v1.1 설치 시 g5_config 변경 0건. 운영지킴이 설치 후 그대로 제거해도 그누보드 코어가 깨끗하게 남는다.
 
@@ -387,13 +396,28 @@ try {
 
 `adm/guardian_test_warning.php` 파일 상단 주석에 더 자세한 사용법이 있다. 이 파일을 직접 읽어 5가지 패턴 코드를 그대로 복사하셔도 된다.
 
+### 8.7 구조화 오류 보고
+
+외부 API·주문 처리 등에서는 메시지와 게시판 참조를 분리해 보고할 수 있습니다. 그누보드 초기화 이후 호출합니다.
+
+```php
+guardian_report_error(
+    'order_processing_failed',
+    '주문 처리 결과를 받지 못했습니다.',
+    array('source' => 'payment_gateway', 'failure' => 'transport_error'),
+    E_USER_WARNING, __FILE__, __LINE__
+);
+```
+
+같은 등급·오류 코드·파일·source·failure이면 문구, 줄번호, 게시판 글 ID가 달라도 저장 쿨다운 내 같은 그룹으로 처리합니다. 발생 상세는 `bo_table`과 `wr_id`를 함께 전달할 때 기록합니다. 기존 `trigger_error()` 수집은 계속 사용할 수 있으며 문자열의 숫자나 특정 서비스 경로를 분석하지 않습니다. 상세 계약은 [REPORT_API.md](src/plugin/gb_guardian/REPORT_API.md)를 참고합니다.
+
 ## 9. 요구 사항
 
 | 항목 | 최소 | 권장 |
 |---|---|---|
 | 그누보드 | 5.5.x | 5.6.x |
 | PHP | 5.6 | 7.4 / 8.x |
-| MySQL / MariaDB | 5.5 | 5.7 / 10.x |
+| MySQL / MariaDB | 5.5, GET_LOCK / RELEASE_LOCK 지원 필수 | 5.7 / 10.x |
 | PHP 확장 | mbstring 권장 | mbstring, iconv, curl |
 | 메일 발송 | 그누보드 mailer (PHP mail) | SMTP Manager v1.0+ |
 | SMS 발송 | 그누보드 기본(아이코드 SMS) | 알리고 SMS·알림톡 플러그인(알리고 발송) |
@@ -441,7 +465,8 @@ https://yoursite.com/plugin/gb_guardian/batch/summary_cron.php?secret=<TOKEN>
 다음 SQL 을 실행한 뒤, 업로드한 파일들을 삭제한다.
 
 ```sql
--- 운영지킴이 테이블 제거 (7개)
+-- 운영지킴이 테이블 제거 (8개)
+DROP TABLE IF EXISTS g5_guardian_occurrence;
 DROP TABLE IF EXISTS g5_guardian_log;
 DROP TABLE IF EXISTS g5_guardian_rule;
 DROP TABLE IF EXISTS g5_guardian_recipient;
