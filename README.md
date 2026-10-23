@@ -5,7 +5,7 @@ https://wizardofcode-labs.github.io/gnuboard5-site-guardian/
 
 > 그누보드5 / 영카트5 사이트의 PHP 오류를 자동 감지해 메일·SMS·카카오 알림톡으로 알리는 운영 진단키트.
 
-- **버전**: v1.1.2
+- **버전**: v1.2.3
 - **저작권**: (c) 2026 K3SOFT / WizardOfCode
 - **요구 환경**: 그누보드5 5.5+ / PHP 5.6 ~ 8.3 / MySQL(MariaDB) 5.5+
 

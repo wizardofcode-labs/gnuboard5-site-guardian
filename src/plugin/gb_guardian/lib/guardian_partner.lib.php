@@ -13,7 +13,7 @@
  * (c) 2026 K3SOFT / WizardOfCode
  *
  * @package gb_guardian
- * @version 1.1.2
+ * @version 1.2.3
  */
 if (!defined('_GNUBOARD_')) exit;
 
