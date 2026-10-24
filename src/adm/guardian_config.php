@@ -138,6 +138,11 @@ details[open] > summary .guardian-toggle-icon::after{content:"▲ 접기";font-s
     <a href="./guardian_test_warning.php" class="btn btn_01" style="white-space:nowrap; flex-shrink:0;">테스트 페이지 열기 →</a>
 </div>
 
+<div class="local_desc01 local_desc">
+    설치·설정·사용 방법은
+    <a href="https://docs.wizardofcode.kr/gnuboard5/guardian/" target="_blank" rel="noopener noreferrer" style="color:#1976d2; text-decoration:underline;">운영지킴이 도움말</a>에서 확인하세요.
+</div>
+
 <form name="guardian_config_form" method="post" action="./guardian_config_update.php" autocomplete="off">
 <input type="hidden" name="token" value="<?php echo get_admin_token(); ?>">
 

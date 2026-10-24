@@ -31,7 +31,7 @@ if (!defined('_GNUBOARD_')) exit;
 // 하려면 guardian_config 테이블 키가 미리 정의돼 있어야 한다. install.php
 // 미실행 환경에서도 본 정의 자체는 비용이 거의 없으므로 무조건 등록한다.
 if (!defined('GUARDIAN_VERSION')) {
-    define('GUARDIAN_VERSION', '1.0.0');
+    define('GUARDIAN_VERSION', '1.2.4');
     define('GUARDIAN_PATH',     G5_PLUGIN_PATH . '/gb_guardian');
     define('GUARDIAN_LIB_PATH', GUARDIAN_PATH . '/lib');
     define('GUARDIAN_URL',      G5_PLUGIN_URL  . '/gb_guardian');

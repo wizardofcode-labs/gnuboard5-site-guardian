@@ -1,11 +1,11 @@
 # 그누보드 운영지킴이 (Gnuboard5 Site Guardian)
 
 📖 사용자 매뉴얼  
-https://wizardofcode-labs.github.io/gnuboard5-site-guardian/
+https://docs.wizardofcode.kr/gnuboard5/guardian/
 
 > 그누보드5 / 영카트5 사이트의 PHP 오류를 자동 감지해 메일·SMS·카카오 알림톡으로 알리는 운영 진단키트.
 
-- **버전**: v1.2.3
+- **버전**: v1.2.4
 - **저작권**: (c) 2026 K3SOFT / WizardOfCode
 - **요구 환경**: 그누보드5 5.5+ / PHP 5.6 ~ 8.3 / MySQL(MariaDB) 5.5+
 
@@ -108,7 +108,7 @@ SMS는 건당 비용이 발생하므로 **법적 안전장치 수준**으로 보
 repo root
 ├── README.md             # GitHub 소개 문서
 ├── docs/
-│   └── index.html        # 상세 사용자 매뉴얼
+│   └── index.html        # Docs Hub 도움말 이전 안내
 └── src/
     ├── extend/
     │   └── gb_guardian.extend.php                  그누보드 진입점 (cf_guardian_use=0 일 때 즉시 return)
